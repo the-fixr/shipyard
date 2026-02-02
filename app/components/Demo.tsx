@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { encodeFunctionData, parseAbi } from 'viem';
 import type { FrameContext } from '../types/frame';
 import {
   analyzeToken,
@@ -1374,21 +1375,13 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
       const fid = frameData.user.fid;
       const username = frameData.user.username || verifyResult.username || '';
 
-      // ABI encode: function claim(uint256 fid, string username)
-      const selector = '0x7a0ed627';
-      const fidHex = fid.toString(16).padStart(64, '0');
-      const usernameOffset = '0000000000000000000000000000000000000000000000000000000000000040';
-      const usernameLength = username.length.toString(16).padStart(64, '0');
-
-      const usernameBytes = new TextEncoder().encode(username);
-      let usernameHex = '';
-      for (let i = 0; i < usernameBytes.length; i++) {
-        usernameHex += usernameBytes[i].toString(16).padStart(2, '0');
-      }
-      const paddedLength = Math.ceil(usernameBytes.length / 32) * 64;
-      usernameHex = usernameHex.padEnd(paddedLength || 64, '0');
-
-      const data = selector + fidHex + usernameOffset + usernameLength + usernameHex;
+      // ABI encode using viem for reliable encoding
+      const builderIdAbi = parseAbi(['function claim(uint256 fid, string username) payable']);
+      const data = encodeFunctionData({
+        abi: builderIdAbi,
+        functionName: 'claim',
+        args: [BigInt(fid), username],
+      });
 
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
@@ -1722,7 +1715,7 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-300">
               <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
-              Neynar & Talent Protocol scores
+              Neynar score & verification
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-300">
               <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
