@@ -28,11 +28,11 @@ const miniAppEmbed = {
       name: 'Shipyard',
       url: APP_URL,
       splashImageUrl: `${APP_URL}/images/shipyardlogotransparent.png`,
-      splashBackgroundColor: '#0a0a0a',
+      splashBackgroundColor: '#1a1a2e',
     },
   },
   splashImageUrl: `${APP_URL}/images/shipyardlogotransparent.png`,
-  splashBackgroundColor: '#0a0a0a',
+  splashBackgroundColor: '#1a1a2e',
 };
 
 export const metadata: Metadata = {
