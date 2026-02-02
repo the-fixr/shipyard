@@ -14,11 +14,21 @@ import {
   getScoreColor,
   getScoreBgColor,
   formatRelativeTime,
+  checkBuilderID,
+  previewBuilderID,
+  claimBuilderID,
+  getClaimMessage,
+  getBuilderIDHolders,
+  getBuilderIDInfo,
+  getBuilderIDShareUrl,
   type TokenAnalysis,
   type Builder,
   type BuilderCast,
   type RugIncident,
   type FeaturedProject,
+  type BuilderIDRecord,
+  type BuilderIDPreview,
+  type AvatarTraits,
 } from '../lib/api';
 import {
   MagnifyingGlassIcon,
@@ -49,12 +59,16 @@ import {
   ChartBarIcon,
   CurrencyDollarIcon,
   ArrowTrendingUpIcon,
+  IdentificationIcon,
+  ShieldCheckIcon,
+  StarIcon,
+  ShareIcon,
 } from '@heroicons/react/24/outline';
 import {
   HeartIcon as HeartSolid,
 } from '@heroicons/react/24/solid';
 
-type View = 'home' | 'analyze' | 'builders' | 'shipped' | 'rugs' | 'submit' | 'learn';
+type View = 'home' | 'analyze' | 'builders' | 'shipped' | 'rugs' | 'submit' | 'learn' | 'builderid';
 
 // ============================================================================
 // TOKEN ANALYSIS CACHE
@@ -1231,6 +1245,683 @@ function LearnView() {
 }
 
 // ============================================================================
+// BUILDER ID VIEW
+// ============================================================================
+function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
+  const [loading, setLoading] = useState(true);
+  const [hasID, setHasID] = useState(false);
+  const [existingRecord, setExistingRecord] = useState<BuilderIDRecord | null>(null);
+  const [preview, setPreview] = useState<BuilderIDPreview | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimResult, setClaimResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [walletAddress, setWalletAddress] = useState('');
+  const [holders, setHolders] = useState<BuilderIDRecord[]>([]);
+  const [totalMinted, setTotalMinted] = useState(0);
+  const [step, setStep] = useState<'check' | 'preview' | 'claim' | 'done'>('check');
+
+  useEffect(() => {
+    async function load() {
+      if (!frameData?.user?.fid) {
+        setLoading(false);
+        return;
+      }
+
+      // Check if user already has Builder ID
+      const checkResult = await checkBuilderID(frameData.user.fid);
+      if (checkResult.hasBuilderId && checkResult.record) {
+        setHasID(true);
+        setExistingRecord(checkResult.record);
+        setStep('done');
+      }
+
+      // Get total minted count
+      const info = await getBuilderIDInfo();
+      if (info) {
+        setTotalMinted(info.totalMinted);
+      }
+
+      // Get recent holders
+      const recentHolders = await getBuilderIDHolders(5);
+      setHolders(recentHolders);
+
+      setLoading(false);
+    }
+    load();
+  }, [frameData?.user?.fid]);
+
+  const handleGeneratePreview = async () => {
+    if (!frameData?.user?.fid) return;
+    setLoading(true);
+    const result = await previewBuilderID(frameData.user.fid);
+    setPreview(result);
+    setStep('preview');
+    setLoading(false);
+  };
+
+  const handleClaim = async () => {
+    if (!frameData?.user?.fid || !walletAddress) return;
+
+    // Validate wallet address
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      setClaimResult({ success: false, error: 'Invalid wallet address' });
+      return;
+    }
+
+    setClaiming(true);
+    setClaimResult(null);
+
+    try {
+      // Step 1: Verify wallet is in Farcaster verified addresses
+      const verifyResult = await getClaimMessage(frameData.user.fid, walletAddress);
+
+      if (!verifyResult.success) {
+        setClaimResult({
+          success: false,
+          error: verifyResult.error || 'Wallet verification failed. Please use a wallet verified on Farcaster.',
+        });
+        setClaiming(false);
+        return;
+      }
+
+      // Step 2: Call the contract directly to mint
+      // Contract address: 0xbe2940989E203FE1cfD75e0bAa1202D58A273956
+      // Function: claim(uint256 fid, string username) payable
+      // Mint price: 0.0001 ETH
+
+      const contractAddress = '0xbe2940989E203FE1cfD75e0bAa1202D58A273956';
+      const mintPrice = '0x5AF3107A4000'; // 0.0001 ETH in hex (100000000000000 wei)
+
+      // Encode function call: claim(uint256 fid, string username)
+      const fid = frameData.user.fid;
+      const username = frameData.user.username || verifyResult.username || '';
+
+      // ABI encode: function claim(uint256 fid, string username)
+      // Function selector: keccak256("claim(uint256,string)")[:4] = 0x7a0ed627
+      const selector = '0x7a0ed627';
+      const fidHex = fid.toString(16).padStart(64, '0');
+      const usernameOffset = '0000000000000000000000000000000000000000000000000000000000000040'; // offset to string data (64 bytes)
+      const usernameLength = username.length.toString(16).padStart(64, '0');
+
+      // Convert username to hex using TextEncoder (browser compatible)
+      const usernameBytes = new TextEncoder().encode(username);
+      let usernameHex = '';
+      for (let i = 0; i < usernameBytes.length; i++) {
+        usernameHex += usernameBytes[i].toString(16).padStart(2, '0');
+      }
+      // Pad to 32-byte boundary
+      const paddedLength = Math.ceil(usernameBytes.length / 32) * 64;
+      usernameHex = usernameHex.padEnd(paddedLength || 64, '0');
+
+      const data = selector + fidHex + usernameOffset + usernameLength + usernameHex;
+
+      let txHash: string;
+
+      try {
+        // Get provider
+        const provider = window.frame?.sdk?.wallet?.ethProvider || window.ethereum;
+        if (!provider) {
+          throw new Error('No wallet provider available. Please use Warpcast or connect a wallet.');
+        }
+
+        // Request accounts
+        const accounts = await provider.request({
+          method: 'eth_requestAccounts',
+        }) as string[];
+
+        if (!accounts || accounts.length === 0) {
+          throw new Error('No wallet connected');
+        }
+
+        // Ensure we're on Base network (chainId 8453 = 0x2105)
+        const chainId = await provider.request({ method: 'eth_chainId' }) as string;
+        if (chainId !== '0x2105') {
+          try {
+            await provider.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0x2105' }],
+            });
+          } catch {
+            throw new Error('Please switch to Base network to claim your Builder ID');
+          }
+        }
+
+        // Send transaction
+        txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: accounts[0],
+            to: contractAddress,
+            value: mintPrice,
+            data: data,
+          }],
+        }) as string;
+
+      } catch (txError) {
+        console.error('Transaction error:', txError);
+        const errorMessage = txError instanceof Error ? txError.message : 'Transaction failed';
+
+        // Check for common errors
+        if (errorMessage.includes('insufficient funds')) {
+          setClaimResult({
+            success: false,
+            error: 'Insufficient ETH balance. You need at least 0.0001 ETH on Base.',
+          });
+        } else if (errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
+          setClaimResult({
+            success: false,
+            error: 'Transaction cancelled.',
+          });
+        } else {
+          setClaimResult({
+            success: false,
+            error: errorMessage,
+          });
+        }
+        setClaiming(false);
+        return;
+      }
+
+      // Step 3: Record the claim in the database
+      const result = await claimBuilderID(
+        frameData.user.fid,
+        walletAddress,
+        txHash, // Pass txHash instead of signature
+        Date.now()
+      );
+
+      setClaimResult(result);
+
+      if (result.success && result.record) {
+        setExistingRecord(result.record);
+        setHasID(true);
+        setStep('done');
+      }
+    } catch (error) {
+      console.error('Claim error:', error);
+      setClaimResult({
+        success: false,
+        error: error instanceof Error ? error.message : 'Claim failed',
+      });
+    }
+
+    setClaiming(false);
+  };
+
+  const viewProfile = (fid: number) => {
+    if (window.frame?.sdk) {
+      window.frame.sdk.actions.viewProfile({ fid });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <SectionHeader
+          title="Builder ID"
+          subtitle="Your onchain builder identity"
+          Icon={IdentificationIcon}
+          iconColor="text-violet-400"
+        />
+        <LoadingSpinner text="Loading Builder ID..." />
+      </div>
+    );
+  }
+
+  if (!frameData?.user) {
+    return (
+      <div className="space-y-3">
+        <SectionHeader
+          title="Builder ID"
+          subtitle="Your onchain builder identity"
+          Icon={IdentificationIcon}
+          iconColor="text-violet-400"
+        />
+        <div className="text-center py-8">
+          <IdentificationIcon className="w-12 h-12 text-gray-500 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">Connect via Farcaster to claim your Builder ID</p>
+        </div>
+      </div>
+    );
+  }
+
+  // User already has Builder ID
+  if (step === 'done' && existingRecord) {
+    return (
+      <div className="space-y-4">
+        <SectionHeader
+          title="Builder ID"
+          subtitle="Your onchain builder identity"
+          Icon={IdentificationIcon}
+          iconColor="text-violet-400"
+        />
+
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-600/20 to-purple-600/20 rounded-2xl blur-xl" />
+          <div className="relative bg-black/50 backdrop-blur-sm rounded-2xl border border-violet-500/30 overflow-hidden">
+            {/* NFT Image */}
+            <div className="aspect-square w-full max-w-[280px] mx-auto p-4">
+              <img
+                src={existingRecord.imageUrl}
+                alt="Builder ID"
+                className="w-full h-full object-cover rounded-xl border border-white/10"
+              />
+            </div>
+
+            {/* Info */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Builder ID #{existingRecord.fid}</h3>
+                  <p className="text-sm text-violet-400">@{existingRecord.username}</p>
+                </div>
+                <div className="flex items-center gap-1 text-green-400 bg-green-500/10 px-2 py-1 rounded-full">
+                  <CheckCircleIcon className="w-4 h-4" />
+                  <span className="text-xs font-medium">Claimed</span>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {existingRecord.builderScore !== undefined && (
+                  <div className="bg-white/5 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-purple-400">{existingRecord.builderScore}</div>
+                    <div className="text-[9px] text-gray-500 uppercase">Builder</div>
+                  </div>
+                )}
+                {existingRecord.neynarScore !== undefined && (
+                  <div className="bg-white/5 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-cyan-400">{Math.round(existingRecord.neynarScore * 100)}%</div>
+                    <div className="text-[9px] text-gray-500 uppercase">Neynar</div>
+                  </div>
+                )}
+                {existingRecord.shippedCount !== undefined && (
+                  <div className="bg-white/5 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-orange-400">{existingRecord.shippedCount}</div>
+                    <div className="text-[9px] text-gray-500 uppercase">Shipped</div>
+                  </div>
+                )}
+              </div>
+
+              {existingRecord.powerBadge && (
+                <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-full w-fit mb-3">
+                  <StarIcon className="w-3.5 h-3.5" />
+                  Power Badge Holder
+                </div>
+              )}
+
+              <p className="text-xs text-gray-500 mb-3">
+                Wallet: {existingRecord.walletAddress.slice(0, 6)}...{existingRecord.walletAddress.slice(-4)}
+              </p>
+
+              {/* Share Buttons */}
+              <div className="flex gap-2">
+                {/* Share to Farcaster */}
+                <button
+                  onClick={() => {
+                    const shareUrl = getBuilderIDShareUrl(existingRecord.fid);
+                    const text = `Just claimed my Builder ID on @shipabordhq! 🚢\n\nBuilder Score: ${existingRecord.builderScore || 0}\nShipped: ${existingRecord.shippedCount || 0} projects`;
+                    const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
+                    if (window.frame?.sdk?.actions?.openUrl) {
+                      window.frame.sdk.actions.openUrl(warpcastUrl);
+                    } else {
+                      window.open(warpcastUrl, '_blank');
+                    }
+                  }}
+                  className="flex-1 py-2.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.24 3H5.76A2.76 2.76 0 0 0 3 5.76v12.48A2.76 2.76 0 0 0 5.76 21h12.48A2.76 2.76 0 0 0 21 18.24V5.76A2.76 2.76 0 0 0 18.24 3ZM7.5 16.5v-3.9l3.15 3.15a.75.75 0 0 0 1.06-1.06L8.56 11.54l3.15-3.15a.75.75 0 0 0-1.06-1.06L7.5 10.48V7.5a.75.75 0 0 0-1.5 0v9a.75.75 0 0 0 1.5 0Zm10.5 0a.75.75 0 0 1-1.5 0v-3.9l-3.15 3.15a.75.75 0 0 1-1.06-1.06l3.15-3.15-3.15-3.15a.75.75 0 0 1 1.06-1.06l3.15 3.15V7.5a.75.75 0 0 1 1.5 0v9Z"/>
+                  </svg>
+                  Farcaster
+                </button>
+
+                {/* Share to X */}
+                <button
+                  onClick={() => {
+                    const shareUrl = getBuilderIDShareUrl(existingRecord.fid);
+                    const text = `Just claimed my Builder ID on @shipabordhq! 🚢\n\nBuilder Score: ${existingRecord.builderScore || 0}\nShipped: ${existingRecord.shippedCount || 0} projects\n\nClaim yours:`;
+                    const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+                    if (window.frame?.sdk?.actions?.openUrl) {
+                      window.frame.sdk.actions.openUrl(xUrl);
+                    } else {
+                      window.open(xUrl, '_blank');
+                    }
+                  }}
+                  className="flex-1 py-2.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-300 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                  X
+                </button>
+              </div>
+
+              {/* View Full Page */}
+              <button
+                onClick={() => {
+                  const pageUrl = getBuilderIDShareUrl(existingRecord.fid);
+                  if (window.frame?.sdk?.actions?.openUrl) {
+                    window.frame.sdk.actions.openUrl(pageUrl);
+                  } else {
+                    window.open(pageUrl, '_blank');
+                  }
+                }}
+                className="w-full py-2 mt-2 bg-white/5 hover:bg-white/10 text-gray-400 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                View Full Page
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Holders */}
+        {holders.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-400 mb-2">Recent Builders</h4>
+            <div className="flex -space-x-2">
+              {holders.slice(0, 8).map((holder) => (
+                <button
+                  key={holder.fid}
+                  onClick={() => viewProfile(holder.fid)}
+                  className="relative group"
+                  title={`@${holder.username}`}
+                >
+                  <img
+                    src={holder.imageUrl}
+                    alt={holder.username}
+                    className="w-8 h-8 rounded-full border-2 border-black hover:border-violet-500 transition-colors"
+                  />
+                </button>
+              ))}
+              {totalMinted > 8 && (
+                <div className="w-8 h-8 rounded-full bg-white/10 border-2 border-black flex items-center justify-center text-xs text-gray-400">
+                  +{totalMinted - 8}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Preview step
+  if (step === 'preview' && preview?.success) {
+    return (
+      <div className="space-y-4">
+        <SectionHeader
+          title="Builder ID Preview"
+          subtitle="Your generated identity"
+          Icon={IdentificationIcon}
+          iconColor="text-violet-400"
+        />
+
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-600/20 to-purple-600/20 rounded-2xl blur-xl" />
+          <div className="relative bg-black/50 backdrop-blur-sm rounded-2xl border border-violet-500/30 overflow-hidden">
+            {/* Preview Image */}
+            {preview.imageUrl && (
+              <div className="aspect-square w-full max-w-[280px] mx-auto p-4">
+                <img
+                  src={preview.imageUrl}
+                  alt="Builder ID Preview"
+                  className="w-full h-full object-cover rounded-xl border border-white/10"
+                />
+              </div>
+            )}
+
+            {/* Profile Info */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex items-center gap-3 mb-4">
+                {preview.profile?.pfpUrl && (
+                  <img src={preview.profile.pfpUrl} alt="" className="w-10 h-10 rounded-full border border-white/20" />
+                )}
+                <div>
+                  <h3 className="font-bold text-white">{preview.profile?.displayName || preview.profile?.username}</h3>
+                  <p className="text-sm text-gray-400">@{preview.profile?.username}</p>
+                </div>
+              </div>
+
+              {/* Stats Preview */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="bg-white/5 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-purple-400">{preview.stats?.builderScore || 0}</div>
+                  <div className="text-[9px] text-gray-500 uppercase">Builder Score</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-orange-400">{preview.stats?.shippedCount || 0}</div>
+                  <div className="text-[9px] text-gray-500 uppercase">Shipped</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-cyan-400">{preview.profile?.followerCount || 0}</div>
+                  <div className="text-[9px] text-gray-500 uppercase">Followers</div>
+                </div>
+              </div>
+
+              {/* Topics */}
+              {preview.stats?.topTopics && preview.stats.topTopics.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {preview.stats.topTopics.map((topic, i) => (
+                    <span key={i} className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded-full">
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Avatar Traits */}
+              {preview.traits && (
+                <div className="mb-4 p-3 bg-white/5 rounded-xl border border-white/10">
+                  <h4 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1.5">
+                    <SparklesIcon className="w-3.5 h-3.5 text-violet-400" />
+                    Avatar Traits
+                  </h4>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {preview.traits.skinTone && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Skin</span>
+                        <span className="text-gray-300">{preview.traits.skinTone}</span>
+                      </div>
+                    )}
+                    {preview.traits.hairColor && preview.traits.hairColor !== 'none' && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Hair</span>
+                        <span className="text-gray-300">{preview.traits.hairColor} {preview.traits.hairStyle}</span>
+                      </div>
+                    )}
+                    {preview.traits.glasses && preview.traits.glasses !== 'none' && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Glasses</span>
+                        <span className="text-gray-300">{preview.traits.glasses}</span>
+                      </div>
+                    )}
+                    {preview.traits.facialHair && preview.traits.facialHair !== 'none' && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Facial Hair</span>
+                        <span className="text-gray-300">{preview.traits.facialHair}</span>
+                      </div>
+                    )}
+                    {preview.traits.headwear && preview.traits.headwear !== 'none' && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Headwear</span>
+                        <span className="text-gray-300">{preview.traits.headwear}</span>
+                      </div>
+                    )}
+                    {preview.traits.expression && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Expression</span>
+                        <span className="text-gray-300">{preview.traits.expression}</span>
+                      </div>
+                    )}
+                    {preview.traits.distinctiveFeature && preview.traits.distinctiveFeature !== 'none' && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Feature</span>
+                        <span className="text-gray-300">{preview.traits.distinctiveFeature}</span>
+                      </div>
+                    )}
+                    {preview.traits.vibe && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Vibe</span>
+                        <span className="text-gray-300 capitalize">{preview.traits.vibe}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Wallet Input */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-1">Your Base Wallet Address</label>
+                <input
+                  type="text"
+                  value={walletAddress}
+                  onChange={(e) => setWalletAddress(e.target.value)}
+                  placeholder="0x..."
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-violet-500/50 font-mono"
+                />
+                <p className="text-[10px] text-gray-500 mt-1">This is where your Builder ID NFT will be minted</p>
+              </div>
+
+              {/* Claim Button */}
+              <button
+                onClick={handleClaim}
+                disabled={claiming || !walletAddress}
+                className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {claiming ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Claiming...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheckIcon className="w-5 h-5" />
+                    Claim Builder ID
+                  </>
+                )}
+              </button>
+
+              {claimResult && !claimResult.success && (
+                <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-xs text-red-400">{claimResult.error}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setStep('check')}
+          className="text-sm text-gray-400 hover:text-white transition-colors"
+        >
+          ← Go back
+        </button>
+      </div>
+    );
+  }
+
+  // Initial check step
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        title="Builder ID"
+        subtitle="Soulbound NFT for builders"
+        Icon={IdentificationIcon}
+        iconColor="text-violet-400"
+      />
+
+      {/* Hero Card */}
+      <div className="relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-violet-600/20 to-purple-600/20 rounded-2xl blur-xl" />
+        <div className="relative bg-black/50 backdrop-blur-sm rounded-2xl border border-violet-500/30 p-5">
+          <div className="text-center mb-4">
+            <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+              <IdentificationIcon className="w-8 h-8 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-1">Claim Your Builder ID</h3>
+            <p className="text-sm text-gray-400">
+              A soulbound NFT that proves your builder identity on Farcaster
+            </p>
+          </div>
+
+          {/* What's Included */}
+          <div className="space-y-2 mb-5">
+            <div className="flex items-center gap-2 text-sm text-gray-300">
+              <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
+              AI-generated builder portrait
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-300">
+              <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
+              Builder score & shipped projects
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-300">
+              <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
+              Neynar & Talent Protocol scores
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-300">
+              <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
+              Non-transferable (soulbound)
+            </div>
+          </div>
+
+          <button
+            onClick={handleGeneratePreview}
+            className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+          >
+            <SparklesIcon className="w-5 h-5" />
+            Generate My Builder ID
+          </button>
+
+          {preview && !preview.success && (
+            <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-xs text-red-400">{preview.error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="flex items-center justify-center gap-6 text-center">
+        <div>
+          <div className="text-2xl font-bold text-violet-400">{totalMinted}</div>
+          <div className="text-xs text-gray-500">Builders Claimed</div>
+        </div>
+      </div>
+
+      {/* Recent Holders */}
+      {holders.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium text-gray-400 mb-2">Recent Claims</h4>
+          <div className="space-y-2">
+            {holders.slice(0, 3).map((holder) => (
+              <button
+                key={holder.fid}
+                onClick={() => viewProfile(holder.fid)}
+                className="w-full flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 transition-colors text-left"
+              >
+                <img
+                  src={holder.imageUrl}
+                  alt={holder.username}
+                  className="w-10 h-10 rounded-lg border border-white/10"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-white text-sm">@{holder.username}</div>
+                  <div className="text-xs text-gray-500">FID #{holder.fid}</div>
+                </div>
+                {holder.builderScore && (
+                  <div className="text-sm font-bold text-purple-400">{holder.builderScore}</div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // PROJECT MODAL
 // ============================================================================
 function ProjectModal({
@@ -1553,6 +2244,7 @@ function FeaturedSection({ onProjectClick }: { onProjectClick: (project: Feature
 function HomeView({ setView, onProjectClick }: { setView: (view: View) => void; onProjectClick: (project: FeaturedProject) => void }) {
   const features = [
     { view: 'analyze' as View, Icon: MagnifyingGlassIcon, title: 'Scanner', desc: 'Token security', gradient: 'from-blue-500/20 to-cyan-500/20', iconColor: 'text-cyan-400' },
+    { view: 'builderid' as View, Icon: IdentificationIcon, title: 'Builder ID', desc: 'Claim your NFT', gradient: 'from-violet-500/20 to-purple-500/20', iconColor: 'text-violet-400' },
     { view: 'builders' as View, Icon: UserGroupIcon, title: 'Builders', desc: 'Top shippers', gradient: 'from-purple-500/20 to-pink-500/20', iconColor: 'text-purple-400' },
     { view: 'shipped' as View, Icon: RocketLaunchIcon, title: 'Shipped', desc: 'New projects', gradient: 'from-orange-500/20 to-yellow-500/20', iconColor: 'text-orange-400' },
     { view: 'rugs' as View, Icon: ExclamationTriangleIcon, title: 'Alerts', desc: 'Rug detection', gradient: 'from-red-500/20 to-orange-500/20', iconColor: 'text-red-400' },
@@ -1750,6 +2442,7 @@ export default function Demo() {
             <div className="relative bg-white/[0.02] backdrop-blur-sm rounded-3xl border border-white/5 p-5">
               {view === 'home' && <HomeView setView={setView} onProjectClick={setSelectedProject} />}
               {view === 'analyze' && <TokenAnalyzeView frameData={frameData} />}
+              {view === 'builderid' && <BuilderIDView frameData={frameData} />}
               {view === 'builders' && <BuildersView />}
               {view === 'shipped' && <ShippedView />}
               {view === 'rugs' && <RugsView />}

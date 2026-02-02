@@ -15,7 +15,7 @@ export interface FrameContext {
       added: boolean;
     };
   }
-  
+
   export interface FrameSDK {
     context: Promise<FrameContext>;
     actions: {
@@ -26,13 +26,25 @@ export interface FrameContext {
       viewProfile: (params: { fid: number }) => void;
       openMiniApp: (params: { url: string }) => void;
       addMiniApp: () => Promise<void>;
+      signMessage: (params: { message: string }) => Promise<{ signature: string }>;
+    };
+    wallet: {
+      ethProvider: EIP1193Provider;
     };
   }
-  
+
+  // EIP-1193 Provider interface
+  export interface EIP1193Provider {
+    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+    on?: (event: string, callback: (...args: unknown[]) => void) => void;
+    removeListener?: (event: string, callback: (...args: unknown[]) => void) => void;
+  }
+
   declare global {
     interface Window {
       frame: {
         sdk: FrameSDK;
       };
+      ethereum?: EIP1193Provider;
     }
   }

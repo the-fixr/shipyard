@@ -320,3 +320,163 @@ export function formatRelativeTime(dateString: string): string {
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
 }
+
+// ============================================================================
+// BUILDER ID API
+// ============================================================================
+
+export interface BuilderIDRecord {
+  fid: number;
+  username: string;
+  tokenId?: number;
+  imageUrl: string;
+  metadataUrl: string;
+  walletAddress: string;
+  builderScore?: number;
+  neynarScore?: number;
+  talentScore?: number;
+  shippedCount?: number;
+  powerBadge?: boolean;
+  mintedAt?: string;
+  txHash?: string;
+}
+
+export interface AvatarTraits {
+  skinTone: string;
+  hairColor: string;
+  hairStyle: string;
+  facialHair: string;
+  glasses: string;
+  headwear: string;
+  expression: string;
+  distinctiveFeature: string;
+  vibe: string;
+}
+
+export interface BuilderIDPreview {
+  success: boolean;
+  profile?: {
+    fid: number;
+    username: string;
+    displayName?: string;
+    pfpUrl?: string;
+    followerCount: number;
+    neynarScore?: number;
+    powerBadge?: boolean;
+  };
+  stats?: {
+    shippedCount: number;
+    totalEngagement: number;
+    topTopics: string[];
+    builderScore?: number;
+    talentScore?: number;
+  };
+  imageUrl?: string;
+  traits?: AvatarTraits;
+  error?: string;
+}
+
+export interface BuilderIDInfo {
+  contract: string;
+  name: string;
+  symbol: string;
+  totalMinted: number;
+}
+
+// Check if user has Builder ID
+export async function checkBuilderID(fid: number): Promise<{ hasBuilderId: boolean; record?: BuilderIDRecord }> {
+  try {
+    const res = await fetch(`${FIXR_API_URL}/api/builder-id/check/${fid}`);
+    return await res.json();
+  } catch (error) {
+    return { hasBuilderId: false };
+  }
+}
+
+// Get Builder ID info
+export async function getBuilderIDInfo(): Promise<BuilderIDInfo | null> {
+  try {
+    const res = await fetch(`${FIXR_API_URL}/api/builder-id/info`);
+    const data = await res.json();
+    return data.success ? data : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Preview Builder ID (generate image without claiming)
+export async function previewBuilderID(fid: number): Promise<BuilderIDPreview> {
+  try {
+    const res = await fetch(`${FIXR_API_URL}/api/builder-id/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fid }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { success: false, error: 'Failed to generate preview' };
+  }
+}
+
+// Get claim message for signing
+export async function getClaimMessage(fid: number, walletAddress: string): Promise<{
+  success: boolean;
+  message?: string;
+  timestamp?: number;
+  username?: string;
+  error?: string;
+  verifiedAddresses?: string[];
+}> {
+  try {
+    const res = await fetch(`${FIXR_API_URL}/api/builder-id/claim-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fid, walletAddress }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { success: false, error: 'Failed to get claim message' };
+  }
+}
+
+// Claim Builder ID (record after on-chain mint)
+export async function claimBuilderID(
+  fid: number,
+  walletAddress: string,
+  txHash: string,
+  timestamp: number
+): Promise<{
+  success: boolean;
+  record?: BuilderIDRecord;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${FIXR_API_URL}/api/builder-id/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fid: fid.toString(), walletAddress, txHash, timestamp }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { success: false, error: 'Failed to claim Builder ID' };
+  }
+}
+
+// Get all Builder ID holders
+export async function getBuilderIDHolders(limit: number = 20): Promise<BuilderIDRecord[]> {
+  try {
+    const res = await fetch(`${FIXR_API_URL}/api/builder-id/holders?limit=${limit}`);
+    const data = await res.json();
+    return data.holders || [];
+  } catch (error) {
+    return [];
+  }
+}
+
+// Get Builder ID share URL
+export function getBuilderIDShareUrl(fid: number): string {
+  const APP_URL = typeof window !== 'undefined'
+    ? window.location.origin
+    : 'https://shipyard.fixr.nexus';
+  return `${APP_URL}/builder/${fid}`;
+}
