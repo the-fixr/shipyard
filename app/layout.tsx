@@ -18,7 +18,7 @@ const APP_URL = 'https://shipyard.fixr.nexus';
 const miniAppEmbed = {
   version: '1',
   name: 'Shipyard',
-  iconUrl: `${APP_URL}/images/fixrpfp.png`,
+  iconUrl: `${APP_URL}/images/shipyardlogotransparent.png`,
   homeUrl: APP_URL,
   imageUrl: `${APP_URL}/images/shipyardpreview.png`,
   button: {
