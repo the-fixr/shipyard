@@ -4,6 +4,9 @@ import BuilderIDPage from './BuilderIDPage';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://shipyard.fixr.nexus';
 const FIXR_API_URL = process.env.NEXT_PUBLIC_FIXR_API_URL || 'https://fixr-agent.see21289.workers.dev';
 
+// Force dynamic rendering so metadata updates on each request
+export const dynamic = 'force-dynamic';
+
 // Cache buster - changes every 5 minutes
 function getCacheBuster(): string {
   const now = Date.now();
@@ -17,8 +20,9 @@ interface Props {
 
 async function getBuilderData(fid: string) {
   try {
+    // No caching - always fetch fresh data
     const res = await fetch(`${FIXR_API_URL}/api/builder-id/check/${fid}`, {
-      next: { revalidate: 60 },
+      cache: 'no-store',
     });
     const data = await res.json();
 

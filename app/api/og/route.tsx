@@ -3,6 +3,9 @@ import { NextRequest } from 'next/server';
 
 export const runtime = 'edge';
 
+// 5 minute cache for OG images
+const OG_CACHE_SECONDS = 300;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const type = searchParams.get('type') || 'default';
