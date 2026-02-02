@@ -1,0 +1,40 @@
+{
+  "name": "fixr-mini-app",
+  "version": "1.0.0",
+  "description": "Builder's Front Page - Token analysis and builder showcase for Farcaster",
+  "private": true,
+  "keywords": [
+    "farcaster",
+    "frame",
+    "mini-app",
+    "token-analysis",
+    "builders",
+    "fixr"
+  ],
+  "author": "Fixr",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@tanstack/react-query": "^5.62.7",
+    "next": "^16.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.0",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
