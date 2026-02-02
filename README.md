@@ -25,7 +25,7 @@ Create a `.env.local` file:
 
 ```env
 NEXT_PUBLIC_APP_URL=https://your-deployed-url.vercel.app
-NEXT_PUBLIC_FIXR_API_URL=https://fixr-agent.chadneal17.workers.dev
+NEXT_PUBLIC_FIXR_API_URL=https://fixr-agent.[accountName].workers.dev
 ```
 
 ## Deployment
