@@ -11,34 +11,34 @@ const rajdhani = Rajdhani({
   variable: '--font-rajdhani',
 });
 
-// Frame embed metadata - Customize these for your app
-// TODO: Update URLs after deployment
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://fixr-mini-app.vercel.app';
+// Frame embed metadata - matches /.well-known/farcaster.json manifest
+const APP_URL = 'https://shipyard.fixr.nexus';
 
-const frameMetadata = {
-  version: 'next',
-  imageUrl: `${APP_URL}/images/frame-preview.png`,
-  button: {
-    title: 'Launch Shipyard',
-    action: {
-      type: 'launch_frame',
-      name: 'Shipyard by Fixr',
-      url: APP_URL,
-      splashImageUrl: `${APP_URL}/images/fixrpfp.png`,
-      splashBackgroundColor: '#0a0a0a'
-    }
-  }
+// Mini app embed for sharing in casts
+const miniAppEmbed = {
+  version: '1',
+  name: 'Shipyard by Fixr',
+  iconUrl: `${APP_URL}/images/fixrpfp.png`,
+  homeUrl: APP_URL,
+  imageUrl: `${APP_URL}/images/shipyardpreview.png`,
+  buttonTitle: 'Launch Shipyard',
+  splashImageUrl: `${APP_URL}/images/shipyardlogotransparent.png`,
+  splashBackgroundColor: '#0a0a0a',
 };
 
 export const metadata: Metadata = {
   title: 'Shipyard by Fixr',
   description: 'Builder\'s command center. Token security analysis, trending builders, shipped projects, and rug alerts.',
+  openGraph: {
+    title: 'Shipyard by Fixr',
+    description: 'Builder\'s command center. Token security, trending builders, and shipped projects.',
+    images: [`${APP_URL}/images/shipyardpreview.png`],
+  },
   other: {
-    'fc:frame': JSON.stringify(frameMetadata),
-    'og:image': frameMetadata.imageUrl,
-    'fc:frame:image': frameMetadata.imageUrl,
-    'fc:frame:button:1': frameMetadata.button.title,
-    'fc:frame:post_url': frameMetadata.button.action.url,
+    // Use fc:miniapp for new mini apps (fc:frame is legacy)
+    'fc:miniapp': JSON.stringify(miniAppEmbed),
+    // Keep fc:frame for backward compatibility
+    'fc:frame': JSON.stringify(miniAppEmbed),
   },
 };
 
