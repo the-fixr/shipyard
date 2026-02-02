@@ -1642,13 +1642,7 @@ export default function Demo() {
 
         window.frame.sdk.actions.ready();
 
-        // Prompt user to add the mini app to their Farcaster client
-        try {
-          await window.frame.sdk.actions.addMiniApp();
-        } catch {
-          // User may have already added the app or declined - this is fine
-        }
-
+        // Get context first to check if app is already added
         let retries = 3;
         let context = null;
 
@@ -1666,6 +1660,28 @@ export default function Demo() {
 
         if (!context && mounted) {
           throw new Error('Failed to get Frame context');
+        }
+
+        // If app not yet added, prompt user and send welcome notification on success
+        if (context && !context.client?.added) {
+          try {
+            await window.frame.sdk.actions.addMiniApp();
+            // User successfully added the app - send welcome notification
+            if (context.user?.fid) {
+              fetch('https://fixr-agent.see21289.workers.dev/api/notifications/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fid: context.user.fid,
+                  username: context.user.username,
+                }),
+              }).catch(() => {
+                // Ignore notification errors
+              });
+            }
+          } catch {
+            // User declined or already added - this is fine
+          }
         }
 
         if (mounted) {
