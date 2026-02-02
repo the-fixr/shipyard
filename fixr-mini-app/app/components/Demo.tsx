@@ -1,4 +1,5 @@
 'use client';
+// Deployment trigger: 1770075499437
 
 import React, { useEffect, useState } from 'react';
 import { encodeFunctionData, parseAbi } from 'viem';
