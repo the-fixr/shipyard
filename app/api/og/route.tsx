@@ -13,6 +13,12 @@ export async function GET(request: NextRequest) {
     const username = searchParams.get('username') || 'Builder';
     const score = searchParams.get('score') || '0';
     const shipped = searchParams.get('shipped') || '0';
+    const neynar = searchParams.get('neynar') || '';
+    const powerBadge = searchParams.get('power') === 'true';
+    const imageUrl = searchParams.get('image') || '';
+
+    // Calculate neynar percentage if provided (comes as 0-1)
+    const neynarPercent = neynar ? Math.round(parseFloat(neynar) * 100) : null;
 
     return new ImageResponse(
       (
@@ -21,48 +27,104 @@ export async function GET(request: NextRequest) {
             height: '100%',
             width: '100%',
             display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
             backgroundColor: '#0f0f1a',
-            backgroundImage: 'radial-gradient(circle at 25% 25%, #8b5cf640 0%, transparent 50%), radial-gradient(circle at 75% 75%, #a855f730 0%, transparent 50%)',
+            backgroundImage: 'radial-gradient(circle at 20% 20%, #8b5cf640 0%, transparent 50%), radial-gradient(circle at 80% 80%, #a855f730 0%, transparent 50%)',
           }}
         >
+          {/* Left side - Avatar */}
           <div
             style={{
               display: 'flex',
-              flexDirection: 'column',
+              width: '400px',
               alignItems: 'center',
+              justifyContent: 'center',
               padding: '40px',
             }}
           >
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                width={320}
+                height={320}
+                style={{
+                  borderRadius: '24px',
+                  border: '4px solid rgba(139, 92, 246, 0.5)',
+                  boxShadow: '0 0 60px rgba(139, 92, 246, 0.3)',
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  width: '320px',
+                  height: '320px',
+                  background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                  borderRadius: '24px',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <span style={{ fontSize: '120px', color: 'white' }}>#{fid}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right side - Info */}
+          <div
+            style={{
+              display: 'flex',
+              flex: 1,
+              flexDirection: 'column',
+              justifyContent: 'center',
+              padding: '40px 60px 40px 20px',
+            }}
+          >
+            {/* Header */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '16px',
-                marginBottom: '24px',
+                marginBottom: '16px',
               }}
             >
               <div
                 style={{
                   background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-                  padding: '12px 24px',
-                  borderRadius: '12px',
+                  padding: '8px 20px',
+                  borderRadius: '10px',
                   color: 'white',
-                  fontSize: '32px',
+                  fontSize: '24px',
                   fontWeight: 'bold',
                 }}
               >
                 Builder ID
               </div>
-              <span style={{ color: '#6b7280', fontSize: '32px' }}>#{fid}</span>
+              <span style={{ color: '#6b7280', fontSize: '24px' }}>#{fid}</span>
+              {powerBadge && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: 'rgba(234, 179, 8, 0.2)',
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    color: '#facc15',
+                    fontSize: '16px',
+                  }}
+                >
+                  <span>⭐</span>
+                  <span>Power Badge</span>
+                </div>
+              )}
             </div>
 
+            {/* Username */}
             <div
               style={{
                 color: 'white',
-                fontSize: '64px',
+                fontSize: '56px',
                 fontWeight: 'bold',
                 marginBottom: '32px',
               }}
@@ -70,10 +132,12 @@ export async function GET(request: NextRequest) {
               @{username}
             </div>
 
+            {/* Stats Grid */}
             <div
               style={{
                 display: 'flex',
-                gap: '32px',
+                gap: '20px',
+                marginBottom: '32px',
               }}
             >
               <div
@@ -81,39 +145,57 @@ export async function GET(request: NextRequest) {
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  padding: '24px 40px',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  padding: '20px 32px',
                   borderRadius: '16px',
+                  minWidth: '140px',
                 }}
               >
-                <span style={{ color: '#a855f7', fontSize: '48px', fontWeight: 'bold' }}>{score}</span>
-                <span style={{ color: '#9ca3af', fontSize: '18px' }}>Builder Score</span>
+                <span style={{ color: '#a855f7', fontSize: '42px', fontWeight: 'bold' }}>{score}</span>
+                <span style={{ color: '#9ca3af', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>Builder Score</span>
               </div>
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  padding: '24px 40px',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  padding: '20px 32px',
                   borderRadius: '16px',
+                  minWidth: '140px',
                 }}
               >
-                <span style={{ color: '#f97316', fontSize: '48px', fontWeight: 'bold' }}>{shipped}</span>
-                <span style={{ color: '#9ca3af', fontSize: '18px' }}>Shipped</span>
+                <span style={{ color: '#f97316', fontSize: '42px', fontWeight: 'bold' }}>{shipped}</span>
+                <span style={{ color: '#9ca3af', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>Shipped</span>
               </div>
+              {neynarPercent !== null && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    padding: '20px 32px',
+                    borderRadius: '16px',
+                    minWidth: '140px',
+                  }}
+                >
+                  <span style={{ color: '#06b6d4', fontSize: '42px', fontWeight: 'bold' }}>{neynarPercent}%</span>
+                  <span style={{ color: '#9ca3af', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>Neynar</span>
+                </div>
+              )}
             </div>
 
+            {/* Footer */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                marginTop: '40px',
               }}
             >
-              <span style={{ color: '#6b7280', fontSize: '20px' }}>Verified on</span>
-              <span style={{ color: '#8b5cf6', fontSize: '24px', fontWeight: 'bold' }}>Shipyard</span>
+              <span style={{ color: '#6b7280', fontSize: '18px' }}>Verified builder on</span>
+              <span style={{ color: '#8b5cf6', fontSize: '22px', fontWeight: 'bold' }}>Shipyard</span>
             </div>
           </div>
         </div>

@@ -42,15 +42,32 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const username = record?.username || 'Builder';
   const score = String(record?.builderScore || 0);
   const shipped = String(record?.shippedCount || 0);
+  const neynar = record?.neynarScore !== undefined ? String(record.neynarScore) : '';
+  const powerBadge = record?.powerBadge || false;
   const imageUrl = record?.imageUrl || '';
 
   // Add cache buster to OG image URL (5 min cache)
   const cacheBuster = getCacheBuster();
-  const ogImageUrl = `${APP_URL}/api/og?type=builder-id&fid=${fid}&username=${encodeURIComponent(username)}&score=${score}&shipped=${shipped}&v=${cacheBuster}`;
+
+  // Build OG image URL with all builder data
+  const ogParams = new URLSearchParams({
+    type: 'builder-id',
+    fid,
+    username,
+    score,
+    shipped,
+    v: cacheBuster,
+  });
+  if (neynar) ogParams.set('neynar', neynar);
+  if (powerBadge) ogParams.set('power', 'true');
+  if (imageUrl) ogParams.set('image', imageUrl);
+
+  const ogImageUrl = `${APP_URL}/api/og?${ogParams.toString()}`;
 
   const title = `Builder ID #${fid} - @${username}`;
+  const neynarStr = neynar ? ` Neynar: ${Math.round(parseFloat(neynar) * 100)}%.` : '';
   const description = found
-    ? `${username}'s verified builder identity on Farcaster. Builder Score: ${score}, Shipped: ${shipped} projects.`
+    ? `${username}'s verified builder identity on Farcaster. Builder Score: ${score}, Shipped: ${shipped} projects.${neynarStr}`
     : `View Builder ID #${fid} on Shipyard`;
 
   // Mini app embed for frame
