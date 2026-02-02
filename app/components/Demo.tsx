@@ -1666,18 +1666,21 @@ export default function Demo() {
         if (context && !context.client?.added) {
           try {
             await window.frame.sdk.actions.addMiniApp();
-            // User successfully added the app - send welcome notification
+            // User successfully added the app - wait for Neynar to store token, then send welcome
             if (context.user?.fid) {
-              fetch('https://fixr-agent.see21289.workers.dev/api/notifications/test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  fid: context.user.fid,
-                  username: context.user.username,
-                }),
-              }).catch(() => {
-                // Ignore notification errors
-              });
+              // Give Neynar 3 seconds to process the frame_added event and store the token
+              setTimeout(() => {
+                fetch('https://fixr-agent.see21289.workers.dev/api/notifications/test', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    fid: context.user.fid,
+                    username: context.user.username,
+                  }),
+                }).catch(() => {
+                  // Ignore notification errors
+                });
+              }, 3000);
             }
           } catch {
             // User declined or already added - this is fine
