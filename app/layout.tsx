@@ -17,7 +17,7 @@ const APP_URL = 'https://shipyard.fixr.nexus';
 // Mini app embed for sharing in casts
 const miniAppEmbed = {
   version: '1',
-  name: 'Shipyard by Fixr',
+  name: 'Shipyard',
   iconUrl: `${APP_URL}/images/fixrpfp.png`,
   homeUrl: APP_URL,
   imageUrl: `${APP_URL}/images/shipyardpreview.png`,
@@ -27,10 +27,10 @@ const miniAppEmbed = {
 };
 
 export const metadata: Metadata = {
-  title: 'Shipyard by Fixr',
+  title: 'Shipyard',
   description: 'Builder\'s command center. Token security analysis, trending builders, shipped projects, and rug alerts.',
   openGraph: {
-    title: 'Shipyard by Fixr',
+    title: 'Shipyard',
     description: 'Builder\'s command center. Token security, trending builders, and shipped projects.',
     images: [`${APP_URL}/images/shipyardpreview.png`],
   },
