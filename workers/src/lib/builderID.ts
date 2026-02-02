@@ -224,38 +224,6 @@ export async function verifyWalletOwnership(
 }
 
 /**
- * Generate backend signature for smart contract minting
- * This signature authorizes the contract to mint for this FID/wallet combo
- */
-export async function generateContractSignature(
-  env: Env,
-  fid: number,
-  walletAddress: string,
-  username: string
-): Promise<string | null> {
-  const privateKey = env.BUILDER_ID_SIGNER_PRIVATE_KEY;
-  if (!privateKey) {
-    console.error('BUILDER_ID_SIGNER_PRIVATE_KEY not configured');
-    return null;
-  }
-
-  try {
-    // Create message hash matching the contract's expected format
-    // keccak256(abi.encodePacked(fid, walletAddress, username))
-    // For now, return a placeholder - actual signing requires ethers/viem
-    // which we'll add when deploying the contract
-
-    console.log(`Would sign contract message for FID ${fid}, wallet ${walletAddress}`);
-
-    // Return null until we implement proper signing with ethers
-    return null;
-  } catch (error) {
-    console.error('Contract signature generation error:', error);
-    return null;
-  }
-}
-
-/**
  * Fetch builder profile from Neynar
  */
 export async function fetchBuilderProfile(
