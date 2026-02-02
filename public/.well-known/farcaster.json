@@ -1,15 +1,17 @@
 {
   "accountAssociation": {
-    "header": "eyJmaWQiOjg5MzY0MiwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweGZpeHIifQ",
+    "header": "eyJmaWQiOjI1NzQzOTMsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHhGREFmNzE5OTRiM0ZmQTZGQzVCQ2FmQjY1RjhiNzA5MkNFYjAxOTJBIn0",
     "payload": "eyJkb21haW4iOiJzaGlweWFyZC5maXhyLm5leHVzIn0",
-    "signature": "placeholder_signature"
+    "signature": "PIRVWSOAY+hEKSLaWGCmlsVO9WI1B5e2YRh+U5v+X+cjjEyLWxNf3crVr2pWiSmpiMQvOuO+a2/nXdMd+p0FHBw="
   },
   "frame": {
     "version": "1",
     "name": "Shipyard by Fixr",
     "iconUrl": "https://shipyard.fixr.nexus/images/fixrpfp.png",
     "homeUrl": "https://shipyard.fixr.nexus",
-    "splashImageUrl": "https://shipyard.fixr.nexus/images/fixrpfp.png",
+    "imageUrl": "https://shipyard.fixr.nexus/images/shipyardpreview.png",
+    "buttonTitle": "Launch Shipyard",
+    "splashImageUrl": "https://shipyard.fixr.nexus/images/shipyardlogotransparent.png",
     "splashBackgroundColor": "#0a0a0a",
     "webhookUrl": "https://fixr-agent.see21289.workers.dev/api/webhook/miniapp"
   }
