@@ -84,9 +84,33 @@ export async function analyzeToken(address: string): Promise<TokenAnalysis> {
     const res = await fetch(`${FIXR_API_URL}/api/token/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({ address, network: 'base' }),
     });
-    return await res.json();
+    const data = await res.json();
+
+    // Transform API response to match frontend interface
+    if (data.success && data.report) {
+      const r = data.report;
+      return {
+        success: true,
+        token: r.tokenInfo ? {
+          address: r.tokenInfo.address || address,
+          symbol: r.tokenInfo.symbol || 'Unknown',
+          name: r.tokenInfo.name || 'Unknown Token',
+          network: r.network || 'base',
+        } : undefined,
+        score: r.overallScore,
+        breakdown: r.securityAnalysis?.breakdown?.map((b: { category: string; score: number; findings?: string[] }) => ({
+          category: b.category,
+          score: b.score,
+          findings: b.findings || [],
+        })) || [],
+        risks: r.warnings || [],
+        verdict: r.summary || (r.riskLevel ? `Risk level: ${r.riskLevel}` : undefined),
+      };
+    }
+
+    return { success: false, error: data.error || 'Analysis failed' };
   } catch (error) {
     return { success: false, error: 'Failed to connect to Fixr API' };
   }
