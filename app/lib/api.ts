@@ -387,7 +387,12 @@ export interface BuilderIDInfo {
 export async function checkBuilderID(fid: number): Promise<{ hasBuilderId: boolean; record?: BuilderIDRecord }> {
   try {
     const res = await fetch(`${FIXR_API_URL}/api/builder-id/check/${fid}`);
-    return await res.json();
+    const data = await res.json();
+    // API returns hasMinted, map to hasBuilderId
+    return {
+      hasBuilderId: data.hasMinted || false,
+      record: data.record,
+    };
   } catch (error) {
     return { hasBuilderId: false };
   }

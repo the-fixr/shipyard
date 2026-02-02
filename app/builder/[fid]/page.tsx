@@ -4,6 +4,13 @@ import BuilderIDPage from './BuilderIDPage';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://shipyard.fixr.nexus';
 const FIXR_API_URL = process.env.NEXT_PUBLIC_FIXR_API_URL || 'https://fixr-agent.see21289.workers.dev';
 
+// Cache buster - changes every 5 minutes
+function getCacheBuster(): string {
+  const now = Date.now();
+  const fiveMinutes = 5 * 60 * 1000;
+  return String(Math.floor(now / fiveMinutes));
+}
+
 interface Props {
   params: Promise<{ fid: string }>;
 }
@@ -15,7 +22,8 @@ async function getBuilderData(fid: string) {
     });
     const data = await res.json();
 
-    if (data.hasBuilderId && data.record) {
+    // API returns hasMinted, not hasBuilderId
+    if (data.hasMinted && data.record) {
       return {
         found: true,
         record: data.record,
@@ -36,7 +44,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shipped = String(record?.shippedCount || 0);
   const imageUrl = record?.imageUrl || '';
 
-  const ogImageUrl = `${APP_URL}/api/og?type=builder-id&fid=${fid}&username=${encodeURIComponent(username)}&score=${score}&shipped=${shipped}`;
+  // Add cache buster to OG image URL (5 min cache)
+  const cacheBuster = getCacheBuster();
+  const ogImageUrl = `${APP_URL}/api/og?type=builder-id&fid=${fid}&username=${encodeURIComponent(username)}&score=${score}&shipped=${shipped}&v=${cacheBuster}`;
 
   const title = `Builder ID #${fid} - @${username}`;
   const description = found
