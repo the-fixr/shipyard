@@ -80,7 +80,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     name: `Builder ID #${fid}`,
     iconUrl: `${APP_URL}/images/shipyardicon.png`,
     homeUrl: `${APP_URL}/builder/${fid}`,
-    imageUrl: imageUrl || ogImageUrl,
+    imageUrl: ogImageUrl,
     button: {
       title: 'View Builder ID',
       action: {
@@ -99,13 +99,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title,
       description,
-      images: [imageUrl || ogImageUrl],
+      images: [ogImageUrl],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: [imageUrl || ogImageUrl],
+      images: [ogImageUrl],
     },
     other: {
       'fc:miniapp': JSON.stringify(miniAppEmbed),
