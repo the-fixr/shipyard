@@ -26,13 +26,13 @@ export default function BuilderIDPage({ fid, found, record }: Props) {
     : `https://shipyard.fixr.nexus/builder/${fid}`;
 
   const handleShareFarcaster = () => {
-    const text = `Check out this Builder ID on @shipabordhq! 🚢\n\nBuilder Score: ${record?.builderScore || 0}\nShipped: ${record?.shippedCount || 0} projects`;
+    const text = `Shipyard:`;
     const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
     window.open(warpcastUrl, '_blank');
   };
 
   const handleShareX = () => {
-    const text = `Check out this Builder ID on @shipabordhq! 🚢\n\nBuilder Score: ${record?.builderScore || 0}\nShipped: ${record?.shippedCount || 0} projects\n\nClaim yours:`;
+    const text = `Shipyard:`;
     const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
     window.open(xUrl, '_blank');
   };

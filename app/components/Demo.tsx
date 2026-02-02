@@ -1540,7 +1540,7 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
                 <button
                   onClick={() => {
                     const shareUrl = getBuilderIDShareUrl(existingRecord.fid);
-                    const text = `Just claimed my Builder ID on @shipabordhq! 🚢\n\nBuilder Score: ${existingRecord.builderScore || 0}\nShipped: ${existingRecord.shippedCount || 0} projects`;
+                    const text = `Shipyard:`;
                     const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
                     if (window.frame?.sdk?.actions?.openUrl) {
                       window.frame.sdk.actions.openUrl(warpcastUrl);
@@ -1560,7 +1560,7 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
                 <button
                   onClick={() => {
                     const shareUrl = getBuilderIDShareUrl(existingRecord.fid);
-                    const text = `Just claimed my Builder ID on @shipabordhq! 🚢\n\nBuilder Score: ${existingRecord.builderScore || 0}\nShipped: ${existingRecord.shippedCount || 0} projects\n\nClaim yours:`;
+                    const text = `Shipyard:`;
                     const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
                     if (window.frame?.sdk?.actions?.openUrl) {
                       window.frame.sdk.actions.openUrl(xUrl);
