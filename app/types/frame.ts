@@ -25,6 +25,7 @@ export interface FrameContext {
       viewCast: (params: { hash: string; authorUsername?: string; close?: boolean }) => void;
       viewProfile: (params: { fid: number }) => void;
       openMiniApp: (params: { url: string }) => void;
+      addMiniApp: () => Promise<void>;
     };
   }
   
