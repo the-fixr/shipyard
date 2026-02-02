@@ -177,4 +177,7 @@ export interface Env {
 
   // Talent Protocol (builder reputation and scores)
   TALENT_PROTOCOL_API_KEY?: string;
+
+  // Builder ID (NFT minting signer)
+  BUILDER_ID_SIGNER_PRIVATE_KEY?: string;
 }
