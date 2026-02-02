@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { ErrorBoundary } from './ErrorBoundary';
 
 const Demo = dynamic(() => import('./Demo'), {
   ssr: false,
@@ -8,8 +9,10 @@ const Demo = dynamic(() => import('./Demo'), {
 
 export default function ClientPage() {
   return (
-    <main className="min-h-screen flex flex-col p-4">
-      <Demo />
-    </main>
+    <ErrorBoundary>
+      <main className="min-h-screen flex flex-col p-4">
+        <Demo />
+      </main>
+    </ErrorBoundary>
   );
 }

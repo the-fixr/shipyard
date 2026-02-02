@@ -57,6 +57,92 @@ import {
 type View = 'home' | 'analyze' | 'builders' | 'shipped' | 'rugs' | 'submit' | 'learn';
 
 // ============================================================================
+// TOKEN ANALYSIS CACHE
+// ============================================================================
+const TOKEN_CACHE_KEY = 'shipyard_token_cache';
+const TOKEN_CACHE_TTL = 1000 * 60 * 30; // 30 minutes
+
+interface CachedAnalysis {
+  data: import('../lib/api').TokenAnalysis;
+  timestamp: number;
+}
+
+function getCachedAnalysis(address: string): import('../lib/api').TokenAnalysis | null {
+  try {
+    const cache = localStorage.getItem(TOKEN_CACHE_KEY);
+    if (!cache) return null;
+    const parsed: Record<string, CachedAnalysis> = JSON.parse(cache);
+    const entry = parsed[address.toLowerCase()];
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > TOKEN_CACHE_TTL) {
+      delete parsed[address.toLowerCase()];
+      localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(parsed));
+      return null;
+    }
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedAnalysis(address: string, data: import('../lib/api').TokenAnalysis): void {
+  try {
+    const cache = localStorage.getItem(TOKEN_CACHE_KEY);
+    const parsed: Record<string, CachedAnalysis> = cache ? JSON.parse(cache) : {};
+    parsed[address.toLowerCase()] = { data, timestamp: Date.now() };
+    localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore cache errors
+  }
+}
+
+// ============================================================================
+// SKELETON LOADERS
+// ============================================================================
+function SkeletonCard() {
+  return (
+    <div className="animate-pulse p-4 bg-white/5 rounded-xl border border-white/5">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-full bg-white/10" />
+        <div className="flex-1">
+          <div className="h-4 bg-white/10 rounded w-24 mb-1" />
+          <div className="h-3 bg-white/5 rounded w-16" />
+        </div>
+      </div>
+      <div className="h-3 bg-white/10 rounded w-full mb-2" />
+      <div className="h-3 bg-white/5 rounded w-3/4" />
+    </div>
+  );
+}
+
+function SkeletonList({ count = 3 }: { count?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </div>
+  );
+}
+
+function SkeletonBuilderRow() {
+  return (
+    <div className="animate-pulse flex items-center gap-4 p-4 bg-white/5 rounded-xl">
+      <div className="w-8 h-8 rounded-full bg-white/10" />
+      <div className="w-12 h-12 rounded-full bg-white/10" />
+      <div className="flex-1">
+        <div className="h-4 bg-white/10 rounded w-24 mb-1" />
+        <div className="h-3 bg-white/5 rounded w-16" />
+      </div>
+      <div className="text-right">
+        <div className="h-5 bg-white/10 rounded w-8 mb-1" />
+        <div className="h-2 bg-white/5 rounded w-12" />
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // HEADER COMPONENT
 // ============================================================================
 function Header({
@@ -249,14 +335,31 @@ function TokenAnalyzeView({ frameData }: { frameData: FrameContext | null }) {
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TokenAnalysis | null>(null);
+  const [fromCache, setFromCache] = useState(false);
 
   const handleAnalyze = async () => {
     if (!address.trim()) return;
+    const trimmedAddress = address.trim();
+
+    // Check cache first
+    const cached = getCachedAnalysis(trimmedAddress);
+    if (cached) {
+      setResult(cached);
+      setFromCache(true);
+      return;
+    }
+
     setLoading(true);
     setResult(null);
-    const analysis = await analyzeToken(address.trim());
+    setFromCache(false);
+    const analysis = await analyzeToken(trimmedAddress);
     setResult(analysis);
     setLoading(false);
+
+    // Cache successful results
+    if (analysis.success) {
+      setCachedAnalysis(trimmedAddress, analysis);
+    }
   };
 
   return (
@@ -353,6 +456,12 @@ function BuildersView() {
   const [builders, setBuilders] = useState<Builder[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const viewProfile = (fid: number) => {
+    if (window.frame?.sdk) {
+      window.frame.sdk.actions.viewProfile({ fid });
+    }
+  };
+
   useEffect(() => {
     async function load() {
       const data = await getTrendingBuilders(15);
@@ -362,7 +471,23 @@ function BuildersView() {
     load();
   }, []);
 
-  if (loading) return <LoadingSpinner text="Loading builders..." />;
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <SectionHeader
+          title="Builders"
+          subtitle="Top shippers on Farcaster"
+          Icon={UserGroupIcon}
+          iconColor="text-purple-400"
+        />
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <SkeletonBuilderRow key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -375,9 +500,10 @@ function BuildersView() {
 
       <div className="space-y-2">
         {builders.map((builder, index) => (
-          <div
+          <button
             key={builder.fid}
-            className="group relative"
+            onClick={() => viewProfile(builder.fid)}
+            className="group relative w-full text-left"
           >
             {index < 3 && (
               <div className={`absolute inset-0 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity ${
@@ -420,7 +546,7 @@ function BuildersView() {
                 <div className="text-[10px] text-gray-500 uppercase tracking-wider">shipped</div>
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -447,7 +573,19 @@ function ShippedView() {
     load();
   }, []);
 
-  if (loading) return <LoadingSpinner text="Loading projects..." />;
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <SectionHeader
+          title="Shipped"
+          subtitle="Fresh projects from builders"
+          Icon={RocketLaunchIcon}
+          iconColor="text-orange-400"
+        />
+        <SkeletonList count={4} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -573,7 +711,19 @@ function RugsView() {
     load();
   }, []);
 
-  if (loading) return <LoadingSpinner text="Loading alerts..." />;
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <SectionHeader
+          title="Rug Alerts"
+          subtitle="Incidents detected by Fixr"
+          Icon={ExclamationTriangleIcon}
+          iconColor="text-red-400"
+        />
+        <SkeletonList count={3} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">

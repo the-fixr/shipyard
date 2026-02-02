@@ -1,0 +1,16 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjg5MzY0MiwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweGZpeHIifQ",
+    "payload": "eyJkb21haW4iOiJzaGlweWFyZC5maXhyLm5leHVzIn0",
+    "signature": "placeholder_signature"
+  },
+  "frame": {
+    "version": "1",
+    "name": "Shipyard by Fixr",
+    "iconUrl": "https://shipyard.fixr.nexus/images/fixrpfp.png",
+    "homeUrl": "https://shipyard.fixr.nexus",
+    "splashImageUrl": "https://shipyard.fixr.nexus/images/fixrpfp.png",
+    "splashBackgroundColor": "#0a0a0a",
+    "webhookUrl": "https://fixr-agent.see21289.workers.dev/api/webhook/miniapp"
+  }
+}
