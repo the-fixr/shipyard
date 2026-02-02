@@ -1249,15 +1249,14 @@ function LearnView() {
 // ============================================================================
 function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
   const [loading, setLoading] = useState(true);
-  const [hasID, setHasID] = useState(false);
   const [existingRecord, setExistingRecord] = useState<BuilderIDRecord | null>(null);
-  const [preview, setPreview] = useState<BuilderIDPreview | null>(null);
-  const [claiming, setClaiming] = useState(false);
-  const [claimResult, setClaimResult] = useState<{ success: boolean; error?: string } | null>(null);
-  const [walletAddress, setWalletAddress] = useState('');
+  const [minting, setMinting] = useState(false);
+  const [mintStatus, setMintStatus] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
   const [holders, setHolders] = useState<BuilderIDRecord[]>([]);
   const [totalMinted, setTotalMinted] = useState(0);
-  const [step, setStep] = useState<'check' | 'preview' | 'claim' | 'done'>('check');
+  const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+  const [step, setStep] = useState<'check' | 'minting' | 'done'>('check');
 
   useEffect(() => {
     async function load() {
@@ -1269,7 +1268,6 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
       // Check if user already has Builder ID
       const checkResult = await checkBuilderID(frameData.user.fid);
       if (checkResult.hasBuilderId && checkResult.record) {
-        setHasID(true);
         setExistingRecord(checkResult.record);
         setStep('done');
       }
@@ -1284,167 +1282,157 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
       const recentHolders = await getBuilderIDHolders(5);
       setHolders(recentHolders);
 
+      // Try to get connected wallet
+      try {
+        const provider = window.frame?.sdk?.wallet?.ethProvider || window.ethereum;
+        if (provider) {
+          const accounts = await provider.request({ method: 'eth_accounts' }) as string[];
+          if (accounts && accounts.length > 0) {
+            setConnectedWallet(accounts[0]);
+          }
+        }
+      } catch {
+        // Wallet not connected yet, that's ok
+      }
+
       setLoading(false);
     }
     load();
   }, [frameData?.user?.fid]);
 
-  const handleGeneratePreview = async () => {
+  const handleMint = async () => {
     if (!frameData?.user?.fid) return;
-    setLoading(true);
-    const result = await previewBuilderID(frameData.user.fid);
-    setPreview(result);
-    setStep('preview');
-    setLoading(false);
-  };
 
-  const handleClaim = async () => {
-    if (!frameData?.user?.fid || !walletAddress) return;
-
-    // Validate wallet address
-    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
-      setClaimResult({ success: false, error: 'Invalid wallet address' });
-      return;
-    }
-
-    setClaiming(true);
-    setClaimResult(null);
+    setMinting(true);
+    setError(null);
+    setStep('minting');
 
     try {
-      // Step 1: Verify wallet is in Farcaster verified addresses
+      // Step 1: Connect wallet
+      setMintStatus('Connecting wallet...');
+      const provider = window.frame?.sdk?.wallet?.ethProvider || window.ethereum;
+      if (!provider) {
+        throw new Error('No wallet provider available. Please use Warpcast or connect a wallet.');
+      }
+
+      const accounts = await provider.request({
+        method: 'eth_requestAccounts',
+      }) as string[];
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No wallet connected');
+      }
+
+      const walletAddress = accounts[0];
+      setConnectedWallet(walletAddress);
+
+      // Step 2: Verify wallet is in Farcaster verified addresses
+      setMintStatus('Verifying wallet...');
       const verifyResult = await getClaimMessage(frameData.user.fid, walletAddress);
 
       if (!verifyResult.success) {
-        setClaimResult({
-          success: false,
-          error: verifyResult.error || 'Wallet verification failed. Please use a wallet verified on Farcaster.',
-        });
-        setClaiming(false);
-        return;
+        throw new Error(verifyResult.error || 'Wallet not verified on Farcaster. Please verify this wallet in your Farcaster settings.');
       }
 
-      // Step 2: Call the contract directly to mint
-      // Contract address: 0xbe2940989E203FE1cfD75e0bAa1202D58A273956
-      // Function: claim(uint256 fid, string username) payable
-      // Mint price: 0.0001 ETH
+      // Step 3: Ensure we're on Base network
+      setMintStatus('Checking network...');
+      const chainId = await provider.request({ method: 'eth_chainId' }) as string;
+      if (chainId !== '0x2105') {
+        setMintStatus('Switching to Base...');
+        try {
+          await provider.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x2105' }],
+          });
+        } catch {
+          throw new Error('Please switch to Base network to mint your Builder ID');
+        }
+      }
+
+      // Step 4: Check balance
+      setMintStatus('Checking balance...');
+      const balance = await provider.request({
+        method: 'eth_getBalance',
+        params: [walletAddress, 'latest'],
+      }) as string;
+
+      const balanceWei = BigInt(balance);
+      const mintPriceWei = BigInt('100000000000000'); // 0.0001 ETH
+      const gasBuffer = BigInt('50000000000000'); // ~0.00005 ETH for gas
+
+      if (balanceWei < mintPriceWei + gasBuffer) {
+        const balanceEth = Number(balanceWei) / 1e18;
+        throw new Error(`Insufficient balance. You have ${balanceEth.toFixed(6)} ETH, need at least 0.00015 ETH (0.0001 mint + gas).`);
+      }
+
+      // Step 5: Send mint transaction
+      setMintStatus('Confirm transaction in wallet...');
 
       const contractAddress = '0xbe2940989E203FE1cfD75e0bAa1202D58A273956';
-      const mintPrice = '0x5AF3107A4000'; // 0.0001 ETH in hex (100000000000000 wei)
+      const mintPrice = '0x5AF3107A4000'; // 0.0001 ETH in hex
 
-      // Encode function call: claim(uint256 fid, string username)
       const fid = frameData.user.fid;
       const username = frameData.user.username || verifyResult.username || '';
 
       // ABI encode: function claim(uint256 fid, string username)
-      // Function selector: keccak256("claim(uint256,string)")[:4] = 0x7a0ed627
       const selector = '0x7a0ed627';
       const fidHex = fid.toString(16).padStart(64, '0');
-      const usernameOffset = '0000000000000000000000000000000000000000000000000000000000000040'; // offset to string data (64 bytes)
+      const usernameOffset = '0000000000000000000000000000000000000000000000000000000000000040';
       const usernameLength = username.length.toString(16).padStart(64, '0');
 
-      // Convert username to hex using TextEncoder (browser compatible)
       const usernameBytes = new TextEncoder().encode(username);
       let usernameHex = '';
       for (let i = 0; i < usernameBytes.length; i++) {
         usernameHex += usernameBytes[i].toString(16).padStart(2, '0');
       }
-      // Pad to 32-byte boundary
       const paddedLength = Math.ceil(usernameBytes.length / 32) * 64;
       usernameHex = usernameHex.padEnd(paddedLength || 64, '0');
 
       const data = selector + fidHex + usernameOffset + usernameLength + usernameHex;
 
-      let txHash: string;
+      const txHash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: walletAddress,
+          to: contractAddress,
+          value: mintPrice,
+          data: data,
+        }],
+      }) as string;
 
-      try {
-        // Get provider
-        const provider = window.frame?.sdk?.wallet?.ethProvider || window.ethereum;
-        if (!provider) {
-          throw new Error('No wallet provider available. Please use Warpcast or connect a wallet.');
-        }
+      // Step 6: Wait for transaction and generate image
+      setMintStatus('Transaction sent! Generating your Builder ID...');
 
-        // Request accounts
-        const accounts = await provider.request({
-          method: 'eth_requestAccounts',
-        }) as string[];
-
-        if (!accounts || accounts.length === 0) {
-          throw new Error('No wallet connected');
-        }
-
-        // Ensure we're on Base network (chainId 8453 = 0x2105)
-        const chainId = await provider.request({ method: 'eth_chainId' }) as string;
-        if (chainId !== '0x2105') {
-          try {
-            await provider.request({
-              method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0x2105' }],
-            });
-          } catch {
-            throw new Error('Please switch to Base network to claim your Builder ID');
-          }
-        }
-
-        // Send transaction
-        txHash = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [{
-            from: accounts[0],
-            to: contractAddress,
-            value: mintPrice,
-            data: data,
-          }],
-        }) as string;
-
-      } catch (txError) {
-        console.error('Transaction error:', txError);
-        const errorMessage = txError instanceof Error ? txError.message : 'Transaction failed';
-
-        // Check for common errors
-        if (errorMessage.includes('insufficient funds')) {
-          setClaimResult({
-            success: false,
-            error: 'Insufficient ETH balance. You need at least 0.0001 ETH on Base.',
-          });
-        } else if (errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
-          setClaimResult({
-            success: false,
-            error: 'Transaction cancelled.',
-          });
-        } else {
-          setClaimResult({
-            success: false,
-            error: errorMessage,
-          });
-        }
-        setClaiming(false);
-        return;
-      }
-
-      // Step 3: Record the claim in the database
+      // Call the API to record the claim and generate the image
       const result = await claimBuilderID(
         frameData.user.fid,
         walletAddress,
-        txHash, // Pass txHash instead of signature
+        txHash,
         Date.now()
       );
 
-      setClaimResult(result);
-
       if (result.success && result.record) {
         setExistingRecord(result.record);
-        setHasID(true);
         setStep('done');
+      } else {
+        throw new Error(result.error || 'Failed to generate Builder ID');
       }
-    } catch (error) {
-      console.error('Claim error:', error);
-      setClaimResult({
-        success: false,
-        error: error instanceof Error ? error.message : 'Claim failed',
-      });
+
+    } catch (err) {
+      console.error('Mint error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Mint failed';
+
+      // Handle user rejection
+      if (errorMessage.includes('user rejected') || errorMessage.includes('User denied') || errorMessage.includes('cancelled')) {
+        setError('Transaction cancelled.');
+      } else {
+        setError(errorMessage);
+      }
+
+      setStep('check');
     }
 
-    setClaiming(false);
+    setMinting(false);
   };
 
   const viewProfile = (fid: number) => {
@@ -1646,177 +1634,39 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
     );
   }
 
-  // Preview step
-  if (step === 'preview' && preview?.success) {
+  // Minting step
+  if (step === 'minting') {
     return (
       <div className="space-y-4">
         <SectionHeader
-          title="Builder ID Preview"
-          subtitle="Your generated identity"
+          title="Minting Builder ID"
+          subtitle="Please wait..."
           Icon={IdentificationIcon}
           iconColor="text-violet-400"
         />
 
         <div className="relative">
           <div className="absolute inset-0 bg-gradient-to-br from-violet-600/20 to-purple-600/20 rounded-2xl blur-xl" />
-          <div className="relative bg-black/50 backdrop-blur-sm rounded-2xl border border-violet-500/30 overflow-hidden">
-            {/* Preview Image */}
-            {preview.imageUrl && (
-              <div className="aspect-square w-full max-w-[280px] mx-auto p-4">
-                <img
-                  src={preview.imageUrl}
-                  alt="Builder ID Preview"
-                  className="w-full h-full object-cover rounded-xl border border-white/10"
-                />
+          <div className="relative bg-black/50 backdrop-blur-sm rounded-2xl border border-violet-500/30 p-8">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                <div className="w-8 h-8 border-3 border-white/30 border-t-white rounded-full animate-spin" />
               </div>
-            )}
+              <h3 className="text-lg font-bold text-white mb-2">{mintStatus || 'Processing...'}</h3>
+              <p className="text-sm text-gray-400">
+                {mintStatus.includes('Generating')
+                  ? 'Creating your unique AI-generated avatar...'
+                  : 'This may take a moment'}
+              </p>
 
-            {/* Profile Info */}
-            <div className="p-4 border-t border-white/10">
-              <div className="flex items-center gap-3 mb-4">
-                {preview.profile?.pfpUrl && (
-                  <img src={preview.profile.pfpUrl} alt="" className="w-10 h-10 rounded-full border border-white/20" />
-                )}
-                <div>
-                  <h3 className="font-bold text-white">{preview.profile?.displayName || preview.profile?.username}</h3>
-                  <p className="text-sm text-gray-400">@{preview.profile?.username}</p>
-                </div>
-              </div>
-
-              {/* Stats Preview */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <div className="bg-white/5 rounded-lg p-2 text-center">
-                  <div className="text-lg font-bold text-purple-400">{preview.stats?.builderScore || 0}</div>
-                  <div className="text-[9px] text-gray-500 uppercase">Builder Score</div>
-                </div>
-                <div className="bg-white/5 rounded-lg p-2 text-center">
-                  <div className="text-lg font-bold text-orange-400">{preview.stats?.shippedCount || 0}</div>
-                  <div className="text-[9px] text-gray-500 uppercase">Shipped</div>
-                </div>
-                <div className="bg-white/5 rounded-lg p-2 text-center">
-                  <div className="text-lg font-bold text-cyan-400">{preview.profile?.followerCount || 0}</div>
-                  <div className="text-[9px] text-gray-500 uppercase">Followers</div>
-                </div>
-              </div>
-
-              {/* Topics */}
-              {preview.stats?.topTopics && preview.stats.topTopics.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {preview.stats.topTopics.map((topic, i) => (
-                    <span key={i} className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded-full">
-                      {topic}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Avatar Traits */}
-              {preview.traits && (
-                <div className="mb-4 p-3 bg-white/5 rounded-xl border border-white/10">
-                  <h4 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1.5">
-                    <SparklesIcon className="w-3.5 h-3.5 text-violet-400" />
-                    Avatar Traits
-                  </h4>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    {preview.traits.skinTone && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Skin</span>
-                        <span className="text-gray-300">{preview.traits.skinTone}</span>
-                      </div>
-                    )}
-                    {preview.traits.hairColor && preview.traits.hairColor !== 'none' && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Hair</span>
-                        <span className="text-gray-300">{preview.traits.hairColor} {preview.traits.hairStyle}</span>
-                      </div>
-                    )}
-                    {preview.traits.glasses && preview.traits.glasses !== 'none' && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Glasses</span>
-                        <span className="text-gray-300">{preview.traits.glasses}</span>
-                      </div>
-                    )}
-                    {preview.traits.facialHair && preview.traits.facialHair !== 'none' && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Facial Hair</span>
-                        <span className="text-gray-300">{preview.traits.facialHair}</span>
-                      </div>
-                    )}
-                    {preview.traits.headwear && preview.traits.headwear !== 'none' && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Headwear</span>
-                        <span className="text-gray-300">{preview.traits.headwear}</span>
-                      </div>
-                    )}
-                    {preview.traits.expression && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Expression</span>
-                        <span className="text-gray-300">{preview.traits.expression}</span>
-                      </div>
-                    )}
-                    {preview.traits.distinctiveFeature && preview.traits.distinctiveFeature !== 'none' && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Feature</span>
-                        <span className="text-gray-300">{preview.traits.distinctiveFeature}</span>
-                      </div>
-                    )}
-                    {preview.traits.vibe && (
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-gray-500">Vibe</span>
-                        <span className="text-gray-300 capitalize">{preview.traits.vibe}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Wallet Input */}
-              <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">Your Base Wallet Address</label>
-                <input
-                  type="text"
-                  value={walletAddress}
-                  onChange={(e) => setWalletAddress(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-violet-500/50 font-mono"
-                />
-                <p className="text-[10px] text-gray-500 mt-1">This is where your Builder ID NFT will be minted</p>
-              </div>
-
-              {/* Claim Button */}
-              <button
-                onClick={handleClaim}
-                disabled={claiming || !walletAddress}
-                className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {claiming ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Claiming...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheckIcon className="w-5 h-5" />
-                    Claim Builder ID
-                  </>
-                )}
-              </button>
-
-              {claimResult && !claimResult.success && (
-                <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <p className="text-xs text-red-400">{claimResult.error}</p>
-                </div>
+              {connectedWallet && (
+                <p className="text-xs text-gray-500 mt-4 font-mono">
+                  Wallet: {connectedWallet.slice(0, 6)}...{connectedWallet.slice(-4)}
+                </p>
               )}
             </div>
           </div>
         </div>
-
-        <button
-          onClick={() => setStep('check')}
-          className="text-sm text-gray-400 hover:text-white transition-colors"
-        >
-          ← Go back
-        </button>
       </div>
     );
   }
@@ -1839,11 +1689,26 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
             <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
               <IdentificationIcon className="w-8 h-8 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-1">Claim Your Builder ID</h3>
+            <h3 className="text-xl font-bold text-white mb-1">Mint Your Builder ID</h3>
             <p className="text-sm text-gray-400">
               A soulbound NFT that proves your builder identity on Farcaster
             </p>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
+          )}
+
+          {/* Connected Wallet */}
+          {connectedWallet && (
+            <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
+              <p className="text-xs text-gray-400 mb-1">Connected Wallet</p>
+              <p className="text-sm text-white font-mono">{connectedWallet.slice(0, 6)}...{connectedWallet.slice(-4)}</p>
+            </div>
+          )}
 
           {/* What's Included */}
           <div className="space-y-2 mb-5">
@@ -1865,19 +1730,31 @@ function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
             </div>
           </div>
 
-          <button
-            onClick={handleGeneratePreview}
-            className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-          >
-            <SparklesIcon className="w-5 h-5" />
-            Generate My Builder ID
-          </button>
+          {/* Price Info */}
+          <div className="mb-4 p-3 bg-violet-500/10 rounded-lg border border-violet-500/20 text-center">
+            <p className="text-sm text-violet-300">
+              <span className="font-bold">0.0001 ETH</span> on Base
+            </p>
+            <p className="text-xs text-gray-500 mt-1">+ gas fees (~0.00005 ETH)</p>
+          </div>
 
-          {preview && !preview.success && (
-            <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <p className="text-xs text-red-400">{preview.error}</p>
-            </div>
-          )}
+          <button
+            onClick={handleMint}
+            disabled={minting}
+            className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {minting ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Minting...
+              </>
+            ) : (
+              <>
+                <ShieldCheckIcon className="w-5 h-5" />
+                Mint Builder ID (0.0001 ETH)
+              </>
+            )}
+          </button>
         </div>
       </div>
 
