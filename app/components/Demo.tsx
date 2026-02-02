@@ -1664,22 +1664,28 @@ export default function Demo() {
 
         // If app not yet added, prompt user and send welcome notification on success
         if (context && !context.client?.added) {
+          // Capture user data before async operations
+          const userFid = context.user?.fid;
+          const username = context.user?.username;
+
           try {
             await window.frame.sdk.actions.addMiniApp();
             // User successfully added the app - wait for Neynar to store token, then send welcome
-            if (context.user?.fid) {
+            if (userFid) {
+              console.log('Sending welcome notification to FID:', userFid, 'username:', username);
               // Give Neynar 3 seconds to process the frame_added event and store the token
               setTimeout(() => {
                 fetch('https://fixr-agent.see21289.workers.dev/api/notifications/test', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    fid: context.user.fid,
-                    username: context.user.username,
+                    fid: userFid,
+                    username: username,
                   }),
-                }).catch(() => {
-                  // Ignore notification errors
-                });
+                })
+                  .then(res => res.json())
+                  .then(data => console.log('Welcome notification result:', data))
+                  .catch(err => console.error('Welcome notification error:', err));
               }, 3000);
             }
           } catch {
