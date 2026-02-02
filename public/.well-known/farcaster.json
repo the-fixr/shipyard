@@ -22,6 +22,6 @@
     },
     "splashImageUrl": "https://shipyard.fixr.nexus/images/shipyardlogotransparent.png",
     "splashBackgroundColor": "#1a1a2e",
-    "webhookUrl": "https://fixr-agent.see21289.workers.dev/api/webhook/miniapp"
+    "webhookUrl": "https://api.neynar.com/f/app/6b855520-9d5f-4052-bd07-d47894535d74/event"
   }
 }

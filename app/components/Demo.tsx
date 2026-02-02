@@ -1642,6 +1642,13 @@ export default function Demo() {
 
         window.frame.sdk.actions.ready();
 
+        // Prompt user to add the mini app to their Farcaster client
+        try {
+          await window.frame.sdk.actions.addMiniApp();
+        } catch {
+          // User may have already added the app or declined - this is fine
+        }
+
         let retries = 3;
         let context = null;
 
