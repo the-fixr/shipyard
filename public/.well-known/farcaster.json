@@ -10,7 +10,16 @@
     "iconUrl": "https://shipyard.fixr.nexus/images/fixrpfp.png",
     "homeUrl": "https://shipyard.fixr.nexus",
     "imageUrl": "https://shipyard.fixr.nexus/images/shipyardpreview.png",
-    "buttonTitle": "Launch Shipyard",
+    "button": {
+      "title": "Launch Shipyard",
+      "action": {
+        "type": "launch_frame",
+        "name": "Shipyard",
+        "url": "https://shipyard.fixr.nexus",
+        "splashImageUrl": "https://shipyard.fixr.nexus/images/shipyardlogotransparent.png",
+        "splashBackgroundColor": "#0a0a0a"
+      }
+    },
     "splashImageUrl": "https://shipyard.fixr.nexus/images/shipyardlogotransparent.png",
     "splashBackgroundColor": "#0a0a0a",
     "webhookUrl": "https://fixr-agent.see21289.workers.dev/api/webhook/miniapp"

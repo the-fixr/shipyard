@@ -21,7 +21,16 @@ const miniAppEmbed = {
   iconUrl: `${APP_URL}/images/fixrpfp.png`,
   homeUrl: APP_URL,
   imageUrl: `${APP_URL}/images/shipyardpreview.png`,
-  buttonTitle: 'Launch Shipyard',
+  button: {
+    title: 'Launch Shipyard',
+    action: {
+      type: 'launch_frame',
+      name: 'Shipyard',
+      url: APP_URL,
+      splashImageUrl: `${APP_URL}/images/shipyardlogotransparent.png`,
+      splashBackgroundColor: '#0a0a0a',
+    },
+  },
   splashImageUrl: `${APP_URL}/images/shipyardlogotransparent.png`,
   splashBackgroundColor: '#0a0a0a',
 };
