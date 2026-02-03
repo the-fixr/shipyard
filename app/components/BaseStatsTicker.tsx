@@ -72,13 +72,23 @@ export default function BaseStatsTicker() {
         }
 
         try {
-          // Fetch latest block
-          const blockResponse = await fetch(
-            'https://api.basescan.org/api?module=proxy&action=eth_blockNumber'
-          );
+          // Fetch latest block from Base public RPC (more reliable than Basescan)
+          const blockResponse = await fetch('https://mainnet.base.org', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'eth_blockNumber',
+              params: [],
+              id: 1,
+            }),
+          });
           const blockData = await blockResponse.json();
           if (blockData.result) {
-            blockNumber = parseInt(blockData.result, 16);
+            const parsed = parseInt(blockData.result, 16);
+            if (!isNaN(parsed)) {
+              blockNumber = parsed;
+            }
           }
         } catch (e) {
           console.error('Failed to fetch block number:', e);
