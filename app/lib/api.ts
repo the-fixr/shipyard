@@ -325,6 +325,18 @@ export function formatRelativeTime(dateString: string): string {
 // BUILDER ID API
 // ============================================================================
 
+export type EthosLevel =
+  | 'untrusted'
+  | 'questionable'
+  | 'neutral'
+  | 'known'
+  | 'established'
+  | 'reputable'
+  | 'exemplary'
+  | 'distinguished'
+  | 'revered'
+  | 'renowned';
+
 export interface BuilderIDRecord {
   fid: number;
   username: string;
@@ -335,6 +347,8 @@ export interface BuilderIDRecord {
   builderScore?: number;
   neynarScore?: number;
   talentScore?: number;
+  ethosScore?: number;
+  ethosLevel?: EthosLevel;
   shippedCount?: number;
   powerBadge?: boolean;
   mintedAt?: string;
@@ -370,6 +384,8 @@ export interface BuilderIDPreview {
     topTopics: string[];
     builderScore?: number;
     talentScore?: number;
+    ethosScore?: number;
+    ethosLevel?: EthosLevel;
   };
   imageUrl?: string;
   traits?: AvatarTraits;
@@ -484,4 +500,35 @@ export function getBuilderIDShareUrl(fid: number): string {
     ? window.location.origin
     : 'https://shipyard.fixr.nexus';
   return `${APP_URL}/builder/${fid}`;
+}
+
+// ============================================================================
+// ETHOS HELPERS
+// ============================================================================
+
+// Convert Ethos score (0-2800) to percentage (0-100)
+export function ethosScoreToPercent(score: number): number {
+  return Math.round((score / 2800) * 100);
+}
+
+// Get color for Ethos level
+export function getEthosLevelColor(level: EthosLevel): string {
+  const colors: Record<EthosLevel, string> = {
+    untrusted: '#ef4444', // red
+    questionable: '#f97316', // orange
+    neutral: '#6b7280', // gray
+    known: '#84cc16', // lime
+    established: '#22c55e', // green
+    reputable: '#14b8a6', // teal
+    exemplary: '#06b6d4', // cyan
+    distinguished: '#3b82f6', // blue
+    revered: '#8b5cf6', // violet
+    renowned: '#d946ef', // fuchsia
+  };
+  return colors[level] || '#6b7280';
+}
+
+// Get Ethos level display name (capitalize)
+export function getEthosLevelDisplay(level: EthosLevel): string {
+  return level.charAt(0).toUpperCase() + level.slice(1);
 }

@@ -1,6 +1,34 @@
 'use client';
 
 import Link from 'next/link';
+import ActivityHeatmap from '../../components/ActivityHeatmap';
+
+type EthosLevel =
+  | 'untrusted'
+  | 'questionable'
+  | 'neutral'
+  | 'known'
+  | 'established'
+  | 'reputable'
+  | 'exemplary'
+  | 'distinguished'
+  | 'revered'
+  | 'renowned';
+
+interface DailyActivity {
+  date: string;
+  count: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+interface ActivityHeatmapData {
+  days: DailyActivity[];
+  totalDays: number;
+  activeDays: number;
+  maxDailyCount: number;
+  streakCurrent: number;
+  streakLongest: number;
+}
 
 interface BuilderIDRecord {
   fid: number;
@@ -9,9 +37,30 @@ interface BuilderIDRecord {
   walletAddress: string;
   builderScore?: number;
   neynarScore?: number;
+  ethosScore?: number;
+  ethosLevel?: EthosLevel;
   shippedCount?: number;
   powerBadge?: boolean;
   mintedAt?: string;
+  baseScore?: number;
+  heatmap?: ActivityHeatmapData;
+}
+
+// Get color for Ethos level
+function getEthosLevelColor(level: EthosLevel): string {
+  const colors: Record<EthosLevel, string> = {
+    untrusted: 'text-red-400',
+    questionable: 'text-orange-400',
+    neutral: 'text-gray-400',
+    known: 'text-lime-400',
+    established: 'text-green-400',
+    reputable: 'text-teal-400',
+    exemplary: 'text-cyan-400',
+    distinguished: 'text-blue-400',
+    revered: 'text-violet-400',
+    renowned: 'text-fuchsia-400',
+  };
+  return colors[level] || 'text-gray-400';
 }
 
 interface Props {
@@ -26,13 +75,13 @@ export default function BuilderIDPage({ fid, found, record }: Props) {
     : `https://shipyard.fixr.nexus/builder/${fid}`;
 
   const handleShareFarcaster = () => {
-    const text = `Shipyard:`;
-    const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
-    window.open(warpcastUrl, '_blank');
+    const text = `Just minted my Builder ID on Shipyard:`;
+    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
+    window.open(farcasterUrl, '_blank');
   };
 
   const handleShareX = () => {
-    const text = `Shipyard:`;
+    const text = `Just minted my Builder ID on Shipyard:`;
     const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
     window.open(xUrl, '_blank');
   };
@@ -109,11 +158,21 @@ export default function BuilderIDPage({ fid, found, record }: Props) {
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-3 mb-5">
+              <div className="grid grid-cols-2 gap-3 mb-5">
                 {record.builderScore !== undefined && (
                   <div className="bg-white/5 rounded-xl p-3 text-center">
                     <div className="text-2xl font-bold text-purple-400">{record.builderScore}</div>
                     <div className="text-[10px] text-gray-500 uppercase tracking-wide">Builder Score</div>
+                  </div>
+                )}
+                {record.ethosScore !== undefined && (
+                  <div className="bg-white/5 rounded-xl p-3 text-center">
+                    <div className={`text-2xl font-bold ${record.ethosLevel ? getEthosLevelColor(record.ethosLevel) : 'text-teal-400'}`}>
+                      {record.ethosScore}
+                    </div>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">
+                      Ethos {record.ethosLevel && <span className="capitalize">({record.ethosLevel})</span>}
+                    </div>
                   </div>
                 )}
                 {record.neynarScore !== undefined && (
@@ -128,7 +187,18 @@ export default function BuilderIDPage({ fid, found, record }: Props) {
                     <div className="text-[10px] text-gray-500 uppercase tracking-wide">Shipped</div>
                   </div>
                 )}
+                {record.baseScore !== undefined && (
+                  <div className="bg-white/5 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-bold text-blue-400">{record.baseScore}</div>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">Base Activity</div>
+                  </div>
+                )}
               </div>
+
+              {/* Base Activity Heatmap */}
+              {record.heatmap && record.heatmap.activeDays > 0 && (
+                <ActivityHeatmap heatmap={record.heatmap} className="mb-5" />
+              )}
 
               {record.powerBadge && (
                 <div className="flex items-center gap-2 text-sm text-yellow-400 bg-yellow-500/10 px-3 py-2 rounded-full w-fit mb-5">
