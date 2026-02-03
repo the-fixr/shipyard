@@ -492,7 +492,7 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
   const shareTop10Farcaster = () => {
     const top10 = holders.slice(0, 10);
     const leaderboardText = top10.map((h, i) =>
-      `${i + 1}. @${h.username} (${Math.round((h.neynarScore || 0) * 100)}%)`
+      `${i + 1}. ${h.username} (${Math.round((h.neynarScore || 0) * 100)}%)`
     ).join('\n');
 
     const text = `Top 10 Builders on Shipyard:\n\n${leaderboardText}`;
