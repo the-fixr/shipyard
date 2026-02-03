@@ -22,6 +22,7 @@ import {
   getBuilderIDHolders,
   getBuilderIDInfo,
   getBuilderIDShareUrl,
+  getLeaderboardShareUrl,
   type TokenAnalysis,
   type Builder,
   type BuilderCast,
@@ -31,6 +32,7 @@ import {
   type BuilderIDPreview,
   type AvatarTraits,
 } from '../lib/api';
+import BaseStatsTicker from './BaseStatsTicker';
 import {
   MagnifyingGlassIcon,
   UserGroupIcon,
@@ -177,6 +179,7 @@ function Header({
           {view !== 'home' ? (
             <button
               onClick={() => setView('home')}
+              aria-label="Go back to home"
               className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group"
             >
               <ChevronLeftIcon className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
@@ -188,7 +191,7 @@ function Header({
                 <div className="absolute inset-0 bg-purple-500 rounded-full blur-md opacity-40" />
                 <img
                   src="/images/fixrpfp.png"
-                  alt="Fixr"
+                  alt="Shipyard by Fixr - Builder tools for Base"
                   className="relative w-8 h-8 rounded-full border border-purple-500/50"
                 />
               </div>
@@ -214,7 +217,7 @@ function Header({
             {frameData.user.pfpUrl && (
               <img
                 src={frameData.user.pfpUrl}
-                alt="Profile"
+                alt={`@${frameData.user.username}'s profile picture`}
                 className="w-7 h-7 rounded-full border border-purple-400/30"
               />
             )}
@@ -467,21 +470,52 @@ function TokenAnalyzeView({ frameData }: { frameData: FrameContext | null }) {
 // ============================================================================
 // BUILDERS VIEW
 // ============================================================================
-function BuildersView() {
+function BuildersView({ frameData }: { frameData: FrameContext | null }) {
   const [holders, setHolders] = useState<BuilderIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userRank, setUserRank] = useState<number | null>(null);
 
   const viewProfile = (fid: number) => {
     if (window.frame?.sdk?.actions?.viewProfile) {
       window.frame.sdk.actions.viewProfile({ fid });
     } else {
       // Fallback: open profile URL without closing mini app
-      const profileUrl = `https://warpcast.com/~/profiles/${fid}`;
+      const profileUrl = `https://farcaster.xyz/~/profiles/${fid}`;
       if (window.frame?.sdk?.actions?.openUrl) {
         window.frame.sdk.actions.openUrl(profileUrl);
       } else {
         window.open(profileUrl, '_blank');
       }
+    }
+  };
+
+  const shareTop10 = () => {
+    const top10 = holders.slice(0, 10);
+    const leaderboardText = top10.map((h, i) =>
+      `${i + 1}. @${h.username} (${Math.round((h.neynarScore || 0) * 100)}%)`
+    ).join('\n');
+
+    const text = `Top 10 Builders on Shipyard:\n\n${leaderboardText}`;
+    const shareUrl = getLeaderboardShareUrl();
+    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
+
+    if (window.frame?.sdk?.actions?.openUrl) {
+      window.frame.sdk.actions.openUrl(farcasterUrl);
+    } else {
+      window.open(farcasterUrl, '_blank');
+    }
+  };
+
+  const shareMyRank = (rank: number) => {
+    if (!frameData?.user?.fid) return;
+    const text = `I'm ranked #${rank} on the Shipyard Builder Leaderboard! Check out the top builders on Base:`;
+    const shareUrl = getBuilderIDShareUrl(frameData.user.fid);
+    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
+
+    if (window.frame?.sdk?.actions?.openUrl) {
+      window.frame.sdk.actions.openUrl(farcasterUrl);
+    } else {
+      window.open(farcasterUrl, '_blank');
     }
   };
 
@@ -492,9 +526,17 @@ function BuildersView() {
       data.sort((a, b) => (b.neynarScore || 0) - (a.neynarScore || 0));
       setHolders(data);
       setLoading(false);
+
+      // Check if connected user is in the leaderboard
+      if (frameData?.user?.fid) {
+        const userIndex = data.findIndex(h => h.fid === frameData.user?.fid);
+        if (userIndex !== -1) {
+          setUserRank(userIndex + 1);
+        }
+      }
     }
     load();
-  }, []);
+  }, [frameData?.user?.fid]);
 
   if (loading) {
     return (
@@ -516,12 +558,42 @@ function BuildersView() {
 
   return (
     <div className="space-y-3">
-      <SectionHeader
-        title="Builder ID Leaderboard"
-        subtitle="Top verified builders by reputation"
-        Icon={UserGroupIcon}
-        iconColor="text-purple-400"
-      />
+      <div className="flex items-center justify-between">
+        <SectionHeader
+          title="Builder ID Leaderboard"
+          subtitle="Top verified builders by reputation"
+          Icon={UserGroupIcon}
+          iconColor="text-purple-400"
+        />
+        <button
+          onClick={shareTop10}
+          aria-label="Share top 10 builders leaderboard on Farcaster"
+          title="Share Top 10"
+          className="p-2 bg-white/5 hover:bg-purple-500/20 rounded-lg border border-white/10 hover:border-purple-500/30 transition-all"
+        >
+          <ShareIcon className="w-4 h-4 text-purple-400" />
+        </button>
+      </div>
+
+      {/* User's rank highlight */}
+      {userRank && (
+        <div className="p-3 bg-purple-500/10 rounded-xl border border-purple-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-purple-400">#{userRank}</span>
+              <span className="text-white text-sm">Your rank on the leaderboard</span>
+            </div>
+            <button
+              onClick={() => shareMyRank(userRank)}
+              aria-label={`Share that you are ranked number ${userRank}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg text-xs font-medium transition-colors"
+            >
+              <ShareIcon className="w-3.5 h-3.5" />
+              Share
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         {holders.map((holder, index) => (
@@ -549,7 +621,7 @@ function BuildersView() {
               {/* Avatar */}
               <img
                 src={holder.imageUrl}
-                alt={holder.username}
+                alt={`@${holder.username}'s Builder ID avatar - Rank #${index + 1}`}
                 className="w-11 h-11 rounded-xl border-2 border-purple-500/30"
               />
 
@@ -2170,7 +2242,7 @@ function HomeView({ setView, onProjectClick }: { setView: (view: View) => void; 
             <div className="absolute inset-0 bg-purple-500 rounded-full blur-lg opacity-40" />
             <img
               src="/images/fixrpfp.png"
-              alt="Fixr"
+              alt="Shipyard - Builder's command center for Base"
               className="relative w-10 h-10 rounded-full border-2 border-purple-500/50"
             />
           </div>
@@ -2187,16 +2259,19 @@ function HomeView({ setView, onProjectClick }: { setView: (view: View) => void; 
       <FeaturedSection onProjectClick={onProjectClick} />
 
       {/* Compact Feature Grid */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2" role="navigation" aria-label="Main features">
         {features.map((feature) => (
           <button
             key={feature.view}
             onClick={() => setView(feature.view)}
+            aria-label={`${feature.title} - ${feature.desc}`}
+            data-feature={feature.view}
+            data-description={feature.desc}
             className="group relative overflow-hidden rounded-xl"
           >
             <div className={`absolute inset-0 bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-100 transition-opacity`} />
             <div className="relative p-3 bg-white/5 hover:bg-white/10 backdrop-blur-sm border border-white/5 hover:border-white/20 rounded-xl transition-all text-left">
-              <feature.Icon className={`w-5 h-5 mb-1.5 ${feature.iconColor} group-hover:scale-110 transition-transform`} />
+              <feature.Icon className={`w-5 h-5 mb-1.5 ${feature.iconColor} group-hover:scale-110 transition-transform`} aria-hidden="true" />
               <div className="text-sm font-medium text-white">{feature.title}</div>
               <div className="text-[10px] text-gray-500">{feature.desc}</div>
             </div>
@@ -2207,6 +2282,9 @@ function HomeView({ setView, onProjectClick }: { setView: (view: View) => void; 
       {/* Compact Submit CTA */}
       <button
         onClick={() => setView('submit')}
+        aria-label="Submit your project to get featured on Shipyard"
+        data-feature="submit"
+        data-description="Get your project featured in the Shipyard showcase"
         className="group relative w-full overflow-hidden rounded-xl"
       >
         <div className="absolute inset-0 bg-gradient-to-r from-purple-600/30 to-pink-600/30 group-hover:from-purple-600/40 group-hover:to-pink-600/40 transition-colors" />
@@ -2277,7 +2355,7 @@ export default function Demo() {
               console.log('Sending welcome notification to FID:', userFid, 'username:', username);
               // Give Neynar 3 seconds to process the frame_added event and store the token
               setTimeout(() => {
-                fetch('https://fixr-agent.see21289.workers.dev/api/notifications/test', {
+                fetch('https://agent.fixr.nexus/api/notifications/test', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -2343,6 +2421,9 @@ export default function Demo() {
         {/* Header */}
         <Header frameData={frameData} view={view} setView={setView} />
 
+        {/* Base Network Stats Ticker - only on home view */}
+        {view === 'home' && <BaseStatsTicker />}
+
         {/* Main Content */}
         <main className="flex-1 py-4">
           <div className="relative">
@@ -2353,7 +2434,7 @@ export default function Demo() {
               {view === 'home' && <HomeView setView={setView} onProjectClick={setSelectedProject} />}
               {view === 'analyze' && <TokenAnalyzeView frameData={frameData} />}
               {view === 'builderid' && <BuilderIDView frameData={frameData} />}
-              {view === 'builders' && <BuildersView />}
+              {view === 'builders' && <BuildersView frameData={frameData} />}
               {view === 'shipped' && <ShippedView />}
               {view === 'rugs' && <RugsView />}
               {view === 'submit' && <SubmitView frameData={frameData} />}
