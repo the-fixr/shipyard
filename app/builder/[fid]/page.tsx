@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import BuilderIDPage from './BuilderIDPage';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://shipyard.fixr.nexus';
-const FIXR_API_URL = process.env.NEXT_PUBLIC_FIXR_API_URL || 'https://fixr-agent.see21289.workers.dev';
+const FIXR_API_URL = process.env.NEXT_PUBLIC_FIXR_API_URL || 'https://agent.fixr.nexus';
 
 // Force dynamic rendering so metadata updates on each request
 export const dynamic = 'force-dynamic';
