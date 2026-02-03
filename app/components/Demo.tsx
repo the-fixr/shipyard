@@ -498,9 +498,19 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
 
     const text = `Top 10 Builders on Shipyard\n\n${leaderboardText}`;
 
+    // Build OG image URL with builder data: username,score,pfp;username,score,pfp;...
+    const buildersParam = top10.map((h) => {
+      const score = Math.round((h.neynarScore || 0) * 100);
+      const pfp = encodeURIComponent(h.imageUrl || '');
+      return `${h.username},${score},${pfp}`;
+    }).join(';');
+    const ogImageUrl = `https://shipyard.fixr.nexus/api/og?type=leaderboard&builders=${encodeURIComponent(buildersParam)}`;
+
     // Use URL constructor for proper encoding
     const url = new URL('https://farcaster.xyz/~/compose');
     url.searchParams.set('text', text);
+    // Add OG image as first embed, mini app as second
+    url.searchParams.append('embeds[]', ogImageUrl);
     url.searchParams.append('embeds[]', 'https://shipyard.fixr.nexus');
     const farcasterUrl = url.toString();
 
