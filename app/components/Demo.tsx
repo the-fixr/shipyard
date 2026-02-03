@@ -498,7 +498,11 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
     const text = `Top 10 Builders on Shipyard:\n\n${leaderboardText}`;
     // Use main app URL for mini app embed (has proper fc:frame metadata)
     const shareUrl = 'https://shipyard.fixr.nexus';
-    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds%5B%5D=${encodeURIComponent(shareUrl)}`;
+    // Use URL constructor for proper encoding
+    const url = new URL('https://farcaster.xyz/~/compose');
+    url.searchParams.set('text', text);
+    url.searchParams.append('embeds[]', shareUrl);
+    const farcasterUrl = url.toString();
 
     if (window.frame?.sdk?.actions?.openUrl) {
       window.frame.sdk.actions.openUrl(farcasterUrl);
