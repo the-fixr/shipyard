@@ -1,5 +1,4 @@
 'use client';
-// Deployment trigger: 1770075499437
 
 import React, { useEffect, useState } from 'react';
 import { encodeFunctionData, parseAbi } from 'viem';
@@ -469,19 +468,29 @@ function TokenAnalyzeView({ frameData }: { frameData: FrameContext | null }) {
 // BUILDERS VIEW
 // ============================================================================
 function BuildersView() {
-  const [builders, setBuilders] = useState<Builder[]>([]);
+  const [holders, setHolders] = useState<BuilderIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const viewProfile = (fid: number) => {
-    if (window.frame?.sdk) {
+    if (window.frame?.sdk?.actions?.viewProfile) {
       window.frame.sdk.actions.viewProfile({ fid });
+    } else {
+      // Fallback: open profile URL without closing mini app
+      const profileUrl = `https://warpcast.com/~/profiles/${fid}`;
+      if (window.frame?.sdk?.actions?.openUrl) {
+        window.frame.sdk.actions.openUrl(profileUrl);
+      } else {
+        window.open(profileUrl, '_blank');
+      }
     }
   };
 
   useEffect(() => {
     async function load() {
-      const data = await getTrendingBuilders(15);
-      setBuilders(data);
+      const data = await getBuilderIDHolders(20);
+      // Sort by neynarScore descending
+      data.sort((a, b) => (b.neynarScore || 0) - (a.neynarScore || 0));
+      setHolders(data);
       setLoading(false);
     }
     load();
@@ -491,8 +500,8 @@ function BuildersView() {
     return (
       <div className="space-y-3">
         <SectionHeader
-          title="Builders"
-          subtitle="Top shippers on Farcaster"
+          title="Builder ID Leaderboard"
+          subtitle="Top verified builders by reputation"
           Icon={UserGroupIcon}
           iconColor="text-purple-400"
         />
@@ -508,17 +517,17 @@ function BuildersView() {
   return (
     <div className="space-y-3">
       <SectionHeader
-        title="Builders"
-        subtitle="Top shippers on Farcaster"
+        title="Builder ID Leaderboard"
+        subtitle="Top verified builders by reputation"
         Icon={UserGroupIcon}
         iconColor="text-purple-400"
       />
 
       <div className="space-y-2">
-        {builders.map((builder, index) => (
+        {holders.map((holder, index) => (
           <button
-            key={builder.fid}
-            onClick={() => viewProfile(builder.fid)}
+            key={holder.fid}
+            onClick={() => viewProfile(holder.fid)}
             className="group relative w-full text-left"
           >
             {index < 3 && (
@@ -526,9 +535,9 @@ function BuildersView() {
                 index === 0 ? 'bg-yellow-500/20' : index === 1 ? 'bg-gray-400/20' : 'bg-orange-500/20'
               }`} />
             )}
-            <div className="relative flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 backdrop-blur-sm rounded-xl border border-white/5 hover:border-white/20 transition-all">
+            <div className="relative flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 backdrop-blur-sm rounded-xl border border-white/5 hover:border-white/20 transition-all">
               {/* Rank */}
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${
                 index === 0 ? 'bg-yellow-500/20 text-yellow-400' :
                 index === 1 ? 'bg-gray-400/20 text-gray-300' :
                 index === 2 ? 'bg-orange-500/20 text-orange-400' :
@@ -538,36 +547,60 @@ function BuildersView() {
               </div>
 
               {/* Avatar */}
-              {builder.pfpUrl && (
-                <img
-                  src={builder.pfpUrl}
-                  alt={builder.username}
-                  className="w-12 h-12 rounded-full border-2 border-white/10"
-                />
-              )}
+              <img
+                src={holder.imageUrl}
+                alt={holder.username}
+                className="w-11 h-11 rounded-xl border-2 border-purple-500/30"
+              />
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-white truncate">
-                  {builder.displayName || builder.username}
+                <div className="font-medium text-white truncate flex items-center gap-1.5">
+                  @{holder.username}
+                  {holder.powerBadge && (
+                    <span className="text-yellow-400 text-xs">⭐</span>
+                  )}
                 </div>
-                <div className="text-sm text-gray-500">@{builder.username}</div>
+                <div className="text-xs text-gray-500">FID: {holder.fid}</div>
               </div>
 
-              {/* Stats */}
-              <div className="text-right">
-                <div className="text-lg font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  {builder.shippedCount}
-                </div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider">shipped</div>
+              {/* Scores */}
+              <div className="flex gap-2 items-center">
+                {/* Neynar Score */}
+                {holder.neynarScore !== undefined && holder.neynarScore !== null && (
+                  <div className="text-center px-2">
+                    <div className="text-sm font-bold text-cyan-400">
+                      {Math.round(holder.neynarScore * 100)}%
+                    </div>
+                    <div className="text-[9px] text-gray-500 uppercase">Neynar</div>
+                  </div>
+                )}
+                {/* Ethos Score */}
+                {holder.ethosScore !== undefined && holder.ethosScore !== null && (
+                  <div className="text-center px-2">
+                    <div className="text-sm font-bold text-teal-400">
+                      {holder.ethosScore}
+                    </div>
+                    <div className="text-[9px] text-gray-500 uppercase">Ethos</div>
+                  </div>
+                )}
+                {/* Builder Score */}
+                {holder.builderScore !== undefined && holder.builderScore > 0 && (
+                  <div className="text-center px-2">
+                    <div className="text-sm font-bold text-purple-400">
+                      {holder.builderScore}
+                    </div>
+                    <div className="text-[9px] text-gray-500 uppercase">Score</div>
+                  </div>
+                )}
               </div>
             </div>
           </button>
         ))}
       </div>
 
-      {builders.length === 0 && (
-        <div className="text-center py-8 text-gray-500">No builders found</div>
+      {holders.length === 0 && (
+        <div className="text-center py-8 text-gray-500">No Builder ID holders yet</div>
       )}
     </div>
   );
