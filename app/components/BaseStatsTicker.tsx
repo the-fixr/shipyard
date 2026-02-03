@@ -252,12 +252,12 @@ export default function ChainStatsTicker() {
 
   return (
     <div
-      className={`relative overflow-hidden bg-gradient-to-r ${selectedChain.bgGradient} border-y ${selectedChain.borderColor} py-2 my-2`}
+      className={`relative bg-gradient-to-r ${selectedChain.bgGradient} border-y ${selectedChain.borderColor} py-2 my-2`}
       aria-label={`${selectedChain.name} network statistics`}
       role="region"
     >
       {/* Chain selector dropdown */}
-      <div className="absolute left-3 top-1/2 -translate-y-1/2" ref={dropdownRef}>
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 z-[100]" ref={dropdownRef}>
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
           className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
