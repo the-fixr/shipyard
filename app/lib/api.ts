@@ -1,6 +1,6 @@
 // Fixr API utilities for communicating with the worker
 
-const FIXR_API_URL = process.env.NEXT_PUBLIC_FIXR_API_URL || 'https://fixr-agent.see21289.workers.dev';
+const FIXR_API_URL = process.env.NEXT_PUBLIC_FIXR_API_URL || 'https://agent.fixr.nexus';
 
 export interface TokenAnalysis {
   success: boolean;
