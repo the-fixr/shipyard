@@ -497,7 +497,8 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
 
     const text = `Top 10 Builders on Shipyard:\n\n${leaderboardText}`;
     const shareUrl = getLeaderboardShareUrl();
-    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
+    // Use encodeURIComponent for the entire embeds parameter to handle brackets
+    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds%5B%5D=${encodeURIComponent(shareUrl)}`;
 
     if (window.frame?.sdk?.actions?.openUrl) {
       window.frame.sdk.actions.openUrl(farcasterUrl);
@@ -527,7 +528,7 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
     if (!frameData?.user?.fid) return;
     const text = `I'm ranked #${rank} on the Shipyard Builder Leaderboard! Check out the top builders on Base:`;
     const shareUrl = getBuilderIDShareUrl(frameData.user.fid);
-    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(shareUrl)}`;
+    const farcasterUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds%5B%5D=${encodeURIComponent(shareUrl)}`;
 
     if (window.frame?.sdk?.actions?.openUrl) {
       window.frame.sdk.actions.openUrl(farcasterUrl);
