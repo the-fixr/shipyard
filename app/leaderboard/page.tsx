@@ -55,9 +55,10 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [ogImageUrl],
     },
     // Override frame metadata to prevent Farcaster from rendering as frame
+    // Use empty object string so Farcaster doesn't try to parse as a valid frame
     other: {
-      'fc:frame': '',
-      'fc:miniapp': '',
+      'fc:frame': '{}',
+      'fc:miniapp': '{}',
     },
   };
 }
