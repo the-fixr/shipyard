@@ -46,7 +46,7 @@ const CHAINS: ChainConfig[] = [
     color: 'bg-indigo-500',
     bgGradient: 'from-indigo-500/10 via-indigo-600/5 to-indigo-500/10',
     borderColor: 'border-indigo-500/20',
-    rpcUrl: 'https://eth.llamarpc.com',
+    rpcUrl: 'https://ethereum-rpc.publicnode.com', // CORS-enabled public RPC
     explorerApi: 'https://api.etherscan.io/api',
     llamafiName: 'Ethereum',
     gasUnit: 'gwei',
@@ -60,7 +60,7 @@ const CHAINS: ChainConfig[] = [
     color: 'bg-purple-500',
     bgGradient: 'from-purple-500/10 via-purple-600/5 to-purple-500/10',
     borderColor: 'border-purple-500/20',
-    rpcUrl: 'https://api.mainnet-beta.solana.com',
+    rpcUrl: 'https://solana-rpc.publicnode.com', // CORS-enabled public RPC
     llamafiName: 'Solana',
     gasUnit: 'lamports',
     blockLabel: 'Slot',
