@@ -502,6 +502,14 @@ export function getBuilderIDShareUrl(fid: number): string {
   return `${APP_URL}/builder/${fid}`;
 }
 
+// Get Leaderboard share URL
+export function getLeaderboardShareUrl(): string {
+  const APP_URL = typeof window !== 'undefined'
+    ? window.location.origin
+    : 'https://shipyard.fixr.nexus';
+  return `${APP_URL}?view=builders`;
+}
+
 // ============================================================================
 // ETHOS HELPERS
 // ============================================================================
