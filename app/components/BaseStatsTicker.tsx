@@ -53,19 +53,36 @@ export default function BaseStatsTicker() {
     async function fetchStats() {
       try {
         // Fetch gas price and block from Basescan
-        const gasResponse = await fetch(
-          'https://api.basescan.org/api?module=proxy&action=eth_gasPrice'
-        );
-        const gasData = await gasResponse.json();
-        const gasPriceWei = parseInt(gasData.result, 16);
-        const gasPriceGwei = gasPriceWei / 1e9;
+        let gasPriceGwei = NaN;
+        let blockNumber = NaN;
 
-        // Fetch latest block
-        const blockResponse = await fetch(
-          'https://api.basescan.org/api?module=proxy&action=eth_blockNumber'
-        );
-        const blockData = await blockResponse.json();
-        const blockNumber = parseInt(blockData.result, 16);
+        try {
+          const gasResponse = await fetch(
+            'https://api.basescan.org/api?module=proxy&action=eth_gasPrice'
+          );
+          const gasData = await gasResponse.json();
+          if (gasData.result) {
+            const gasPriceWei = parseInt(gasData.result, 16);
+            if (!isNaN(gasPriceWei)) {
+              gasPriceGwei = gasPriceWei / 1e9;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch gas price:', e);
+        }
+
+        try {
+          // Fetch latest block
+          const blockResponse = await fetch(
+            'https://api.basescan.org/api?module=proxy&action=eth_blockNumber'
+          );
+          const blockData = await blockResponse.json();
+          if (blockData.result) {
+            blockNumber = parseInt(blockData.result, 16);
+          }
+        } catch (e) {
+          console.error('Failed to fetch block number:', e);
+        }
 
         // Fetch TVL from DeFiLlama
         const tvlResponse = await fetch('https://api.llama.fi/v2/chains');
@@ -74,9 +91,11 @@ export default function BaseStatsTicker() {
         const tvl = baseChain?.tvl || 0;
 
         setStats({
-          gasPrice: gasPriceGwei < 0.01 ? `${(gasPriceGwei * 1000).toFixed(2)} mwei` : `${gasPriceGwei.toFixed(3)} gwei`,
+          gasPrice: !isNaN(gasPriceGwei)
+            ? (gasPriceGwei < 0.01 ? `${(gasPriceGwei * 1000).toFixed(2)} mwei` : `${gasPriceGwei.toFixed(3)} gwei`)
+            : DEFAULT_STATS.gasPrice,
           tvl: formatNumber(tvl),
-          blockNumber: blockNumber.toLocaleString(),
+          blockNumber: !isNaN(blockNumber) ? blockNumber.toLocaleString() : DEFAULT_STATS.blockNumber,
           txCount24h: '2.5M+', // Would need paid API for real tx count
         });
       } catch (error) {

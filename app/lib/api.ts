@@ -507,7 +507,7 @@ export function getLeaderboardShareUrl(): string {
   const APP_URL = typeof window !== 'undefined'
     ? window.location.origin
     : 'https://shipyard.fixr.nexus';
-  return `${APP_URL}?view=builders`;
+  return `${APP_URL}/leaderboard`;
 }
 
 // ============================================================================
