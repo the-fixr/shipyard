@@ -1,4 +1,6 @@
 import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 
 const APP_URL = 'https://shipyard.fixr.nexus';
 const FIXR_API_URL = 'https://agent.fixr.nexus';
@@ -55,9 +57,23 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function LeaderboardPage() {
-  // Redirect to main page with builders view
+export default async function LeaderboardPage() {
+  // Check if this is a bot/crawler request - serve content for them
+  const headersList = await headers();
+  const userAgent = headersList.get('user-agent') || '';
+  const isCrawler = /bot|crawler|spider|facebookexternalhit|twitterbot|linkedinbot|slackbot|discordbot|telegrambot/i.test(userAgent);
+
+  // For crawlers, return minimal page (metadata is served via generateMetadata)
+  // For users, redirect to main app with builders view
+  if (!isCrawler) {
+    redirect('/?view=builders');
+  }
+
+  // Minimal page for crawlers - they just need the OG metadata
   return (
-    <meta httpEquiv="refresh" content="0;url=/?view=builders" />
+    <div>
+      <h1>Builder Leaderboard</h1>
+      <p>Top builders on Shipyard ranked by reputation score.</p>
+    </div>
   );
 }
