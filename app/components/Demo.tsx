@@ -491,17 +491,17 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
 
   const shareTop10Farcaster = () => {
     const top10 = holders.slice(0, 10);
+    // Simplified format without special characters
     const leaderboardText = top10.map((h, i) =>
-      `${i + 1}. ${h.username} (${Math.round((h.neynarScore || 0) * 100)}%)`
+      `${i + 1}. ${h.username} - ${Math.round((h.neynarScore || 0) * 100)} pts`
     ).join('\n');
 
-    const text = `Top 10 Builders on Shipyard:\n\n${leaderboardText}`;
-    // Use main app URL for mini app embed (has proper fc:frame metadata)
-    const shareUrl = 'https://shipyard.fixr.nexus';
-    // Use URL constructor for proper encoding
+    // Include URL in text since mini app embeds in compose can be problematic
+    const text = `Top 10 Builders on Shipyard\n\n${leaderboardText}\n\nCheck it out: shipyard.fixr.nexus`;
+
+    // Use URL constructor for proper encoding - no embed, just text
     const url = new URL('https://farcaster.xyz/~/compose');
     url.searchParams.set('text', text);
-    url.searchParams.append('embeds[]', shareUrl);
     const farcasterUrl = url.toString();
 
     if (window.frame?.sdk?.actions?.openUrl) {
