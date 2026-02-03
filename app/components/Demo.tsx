@@ -489,7 +489,7 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
     }
   };
 
-  const shareTop10 = () => {
+  const shareTop10Farcaster = () => {
     const top10 = holders.slice(0, 10);
     const leaderboardText = top10.map((h, i) =>
       `${i + 1}. @${h.username} (${Math.round((h.neynarScore || 0) * 100)}%)`
@@ -506,7 +506,24 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
     }
   };
 
-  const shareMyRank = (rank: number) => {
+  const shareTop10X = () => {
+    const top10 = holders.slice(0, 3);
+    const leaderboardText = top10.map((h, i) =>
+      `${i + 1}. ${h.username}`
+    ).join(' ');
+
+    const text = `Top builders on @shipaborBase: ${leaderboardText} and more! Check out the full leaderboard:`;
+    const shareUrl = getLeaderboardShareUrl();
+    const xUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+
+    if (window.frame?.sdk?.actions?.openUrl) {
+      window.frame.sdk.actions.openUrl(xUrl);
+    } else {
+      window.open(xUrl, '_blank');
+    }
+  };
+
+  const shareMyRankFarcaster = (rank: number) => {
     if (!frameData?.user?.fid) return;
     const text = `I'm ranked #${rank} on the Shipyard Builder Leaderboard! Check out the top builders on Base:`;
     const shareUrl = getBuilderIDShareUrl(frameData.user.fid);
@@ -516,6 +533,19 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
       window.frame.sdk.actions.openUrl(farcasterUrl);
     } else {
       window.open(farcasterUrl, '_blank');
+    }
+  };
+
+  const shareMyRankX = (rank: number) => {
+    if (!frameData?.user?.fid) return;
+    const text = `I'm ranked #${rank} on the @shipaborBase Builder Leaderboard! Check out the top builders on Base:`;
+    const shareUrl = getBuilderIDShareUrl(frameData.user.fid);
+    const xUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+
+    if (window.frame?.sdk?.actions?.openUrl) {
+      window.frame.sdk.actions.openUrl(xUrl);
+    } else {
+      window.open(xUrl, '_blank');
     }
   };
 
@@ -565,14 +595,28 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
           Icon={UserGroupIcon}
           iconColor="text-purple-400"
         />
-        <button
-          onClick={shareTop10}
-          aria-label="Share top 10 builders leaderboard on Farcaster"
-          title="Share Top 10"
-          className="p-2 bg-white/5 hover:bg-purple-500/20 rounded-lg border border-white/10 hover:border-purple-500/30 transition-all"
-        >
-          <ShareIcon className="w-4 h-4 text-purple-400" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={shareTop10Farcaster}
+            aria-label="Share top 10 builders on Farcaster"
+            title="Share on Farcaster"
+            className="p-2 bg-white/5 hover:bg-purple-500/20 rounded-lg border border-white/10 hover:border-purple-500/30 transition-all"
+          >
+            <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.24 2.29H5.76A3.47 3.47 0 0 0 2.29 5.76v12.48a3.47 3.47 0 0 0 3.47 3.47h12.48a3.47 3.47 0 0 0 3.47-3.47V5.76a3.47 3.47 0 0 0-3.47-3.47Zm-1.8 15.42H7.56V6.29h8.88v11.42Z"/>
+            </svg>
+          </button>
+          <button
+            onClick={shareTop10X}
+            aria-label="Share top 10 builders on X"
+            title="Share on X"
+            className="p-2 bg-white/5 hover:bg-gray-500/20 rounded-lg border border-white/10 hover:border-gray-500/30 transition-all"
+          >
+            <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* User's rank highlight */}
@@ -581,16 +625,32 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold text-purple-400">#{userRank}</span>
-              <span className="text-white text-sm">Your rank on the leaderboard</span>
+              <span className="text-white text-sm">Your rank</span>
             </div>
-            <button
-              onClick={() => shareMyRank(userRank)}
-              aria-label={`Share that you are ranked number ${userRank}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg text-xs font-medium transition-colors"
-            >
-              <ShareIcon className="w-3.5 h-3.5" />
-              Share
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => shareMyRankFarcaster(userRank)}
+                aria-label={`Share rank on Farcaster`}
+                title="Share on Farcaster"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg text-xs font-medium transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.24 2.29H5.76A3.47 3.47 0 0 0 2.29 5.76v12.48a3.47 3.47 0 0 0 3.47 3.47h12.48a3.47 3.47 0 0 0 3.47-3.47V5.76a3.47 3.47 0 0 0-3.47-3.47Zm-1.8 15.42H7.56V6.29h8.88v11.42Z"/>
+                </svg>
+                Share
+              </button>
+              <button
+                onClick={() => shareMyRankX(userRank)}
+                aria-label={`Share rank on X`}
+                title="Share on X"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 rounded-lg text-xs font-medium transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+                X
+              </button>
+            </div>
           </div>
         </div>
       )}

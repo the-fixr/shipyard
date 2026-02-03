@@ -3,18 +3,26 @@
 import { useState, useEffect } from 'react';
 
 interface BaseStats {
-  gasPrice: number;
+  gasPrice: string;
   txCount24h: string;
   tvl: string;
-  activeAddresses: string;
+  blockNumber: string;
 }
 
 const DEFAULT_STATS: BaseStats = {
-  gasPrice: 0.001,
+  gasPrice: '0.001 gwei',
   txCount24h: '2.1M',
   tvl: '$8.2B',
-  activeAddresses: '312K',
+  blockNumber: '...',
 };
+
+function formatNumber(num: number): string {
+  if (num >= 1e12) return `$${(num / 1e12).toFixed(1)}T`;
+  if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
+  if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
+  if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
+  return num.toFixed(0);
+}
 
 export default function BaseStatsTicker() {
   const [stats, setStats] = useState<BaseStats>(DEFAULT_STATS);
@@ -22,10 +30,10 @@ export default function BaseStatsTicker() {
   const [isAnimating, setIsAnimating] = useState(false);
 
   const statItems = [
-    { label: 'Gas', value: `${stats.gasPrice.toFixed(4)} gwei`, icon: '⛽' },
-    { label: '24h Txns', value: stats.txCount24h, icon: '📊' },
+    { label: 'Gas', value: stats.gasPrice, icon: '⛽' },
     { label: 'TVL', value: stats.tvl, icon: '💰' },
-    { label: 'Active', value: stats.activeAddresses, icon: '👥' },
+    { label: 'Block', value: stats.blockNumber, icon: '🧱' },
+    { label: '24h Txns', value: stats.txCount24h, icon: '📊' },
   ];
 
   // Rotate through stats every 3 seconds
@@ -40,24 +48,45 @@ export default function BaseStatsTicker() {
     return () => clearInterval(interval);
   }, [statItems.length]);
 
-  // Fetch real stats (can be enhanced with actual API later)
+  // Fetch real stats from public APIs
   useEffect(() => {
     async function fetchStats() {
       try {
-        // Future: fetch from agent.fixr.nexus/api/base-stats
-        // For now, use defaults with slight variation to show it's live
+        // Fetch gas price and block from Basescan
+        const gasResponse = await fetch(
+          'https://api.basescan.org/api?module=proxy&action=eth_gasPrice'
+        );
+        const gasData = await gasResponse.json();
+        const gasPriceWei = parseInt(gasData.result, 16);
+        const gasPriceGwei = gasPriceWei / 1e9;
+
+        // Fetch latest block
+        const blockResponse = await fetch(
+          'https://api.basescan.org/api?module=proxy&action=eth_blockNumber'
+        );
+        const blockData = await blockResponse.json();
+        const blockNumber = parseInt(blockData.result, 16);
+
+        // Fetch TVL from DeFiLlama
+        const tvlResponse = await fetch('https://api.llama.fi/v2/chains');
+        const tvlData = await tvlResponse.json();
+        const baseChain = tvlData.find((c: { name: string }) => c.name === 'Base');
+        const tvl = baseChain?.tvl || 0;
+
         setStats({
-          gasPrice: 0.001 + Math.random() * 0.001,
-          txCount24h: '2.1M',
-          tvl: '$8.2B',
-          activeAddresses: '312K',
+          gasPrice: gasPriceGwei < 0.01 ? `${(gasPriceGwei * 1000).toFixed(2)} mwei` : `${gasPriceGwei.toFixed(3)} gwei`,
+          tvl: formatNumber(tvl),
+          blockNumber: blockNumber.toLocaleString(),
+          txCount24h: '2.5M+', // Would need paid API for real tx count
         });
-      } catch {
-        // Use defaults on error
+      } catch (error) {
+        console.error('Failed to fetch Base stats:', error);
+        // Keep defaults on error
       }
     }
+
     fetchStats();
-    const refreshInterval = setInterval(fetchStats, 60000);
+    const refreshInterval = setInterval(fetchStats, 30000); // Refresh every 30s
     return () => clearInterval(refreshInterval);
   }, []);
 
