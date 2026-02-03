@@ -54,6 +54,11 @@ export async function generateMetadata(): Promise<Metadata> {
       description: 'Top builders on Shipyard ranked by reputation score.',
       images: [ogImageUrl],
     },
+    // Override frame metadata to prevent Farcaster from rendering as frame
+    other: {
+      'fc:frame': '',
+      'fc:miniapp': '',
+    },
   };
 }
 
