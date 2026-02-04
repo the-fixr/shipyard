@@ -78,6 +78,46 @@ export interface FeaturedProject {
   featured: boolean;
 }
 
+// Ship Tracker Types
+export type ShipCategory = 'miniapp' | 'token' | 'protocol' | 'tool' | 'agent' | 'social' | 'nft' | 'infra' | 'other';
+export type ShipSource = 'clawcrunch' | 'clanker_news' | 'farcaster' | 'github' | 'manual';
+
+export interface Ship {
+  id: string;
+  name: string;
+  description: string;
+  category: ShipCategory;
+  source: ShipSource;
+  sourceUrl: string;
+  sourceId?: string;
+  chain?: 'ethereum' | 'base' | 'monad' | 'solana';
+  urls: {
+    website?: string;
+    github?: string;
+    farcaster?: string;
+    twitter?: string;
+    contract?: string;
+  };
+  builders: string[];
+  tags: string[];
+  metrics?: {
+    points?: number;
+    comments?: number;
+    likes?: number;
+  };
+  publishedAt: string;
+  ingestedAt: string;
+  featured?: boolean;
+}
+
+export interface ShipStats {
+  totalShips: number;
+  totalBuilders: number;
+  byCategory: Record<ShipCategory, number>;
+  bySource: Record<ShipSource, number>;
+  recentShips: number;
+}
+
 // Analyze a token by address
 export async function analyzeToken(address: string): Promise<TokenAnalysis> {
   try {
@@ -509,6 +549,110 @@ export function getLeaderboardShareUrl(): string {
     : 'https://shipyard.fixr.nexus';
   return `${APP_URL}/leaderboard`;
 }
+
+// ============================================================================
+// SHIP TRACKER API
+// ============================================================================
+
+// Get ships with optional filters
+export async function getTrackedShips(options: {
+  category?: ShipCategory;
+  source?: ShipSource;
+  limit?: number;
+  offset?: number;
+  featured?: boolean;
+} = {}): Promise<Ship[]> {
+  try {
+    const params = new URLSearchParams();
+    if (options.category) params.append('category', options.category);
+    if (options.source) params.append('source', options.source);
+    if (options.limit) params.append('limit', options.limit.toString());
+    if (options.offset) params.append('offset', options.offset.toString());
+    if (options.featured !== undefined) params.append('featured', options.featured.toString());
+
+    const res = await fetch(`${FIXR_API_URL}/api/ships?${params}`);
+    const data = await res.json();
+
+    if (!data.success) return [];
+
+    return (data.ships || []).map((s: Record<string, unknown>) => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      category: s.category,
+      source: s.source,
+      sourceUrl: s.source_url || s.sourceUrl,
+      sourceId: s.source_id || s.sourceId,
+      chain: s.chain,
+      urls: s.urls || {},
+      builders: s.builders || [],
+      tags: s.tags || [],
+      metrics: s.metrics,
+      publishedAt: s.published_at || s.publishedAt,
+      ingestedAt: s.ingested_at || s.ingestedAt,
+      featured: s.featured,
+    }));
+  } catch (error) {
+    console.error('Failed to fetch ships:', error);
+    return [];
+  }
+}
+
+// Get ship statistics
+export async function getShipStats(): Promise<ShipStats | null> {
+  try {
+    const res = await fetch(`${FIXR_API_URL}/api/ships/stats`);
+    const data = await res.json();
+
+    if (!data.success) return null;
+
+    return {
+      totalShips: data.totalShips,
+      totalBuilders: data.totalBuilders,
+      byCategory: data.byCategory || {},
+      bySource: data.bySource || {},
+      recentShips: data.recentShips,
+    };
+  } catch (error) {
+    console.error('Failed to fetch ship stats:', error);
+    return null;
+  }
+}
+
+// Category display names
+export const SHIP_CATEGORY_LABELS: Record<ShipCategory, string> = {
+  miniapp: 'Mini Apps',
+  token: 'Tokens',
+  protocol: 'Protocols',
+  tool: 'Tools',
+  agent: 'AI Agents',
+  social: 'Social',
+  nft: 'NFTs',
+  infra: 'Infra',
+  other: 'Other',
+};
+
+// Source display names
+export const SHIP_SOURCE_LABELS: Record<ShipSource, string> = {
+  clawcrunch: 'ClawCrunch',
+  clanker_news: 'Clanker News',
+  farcaster: 'Farcaster',
+  github: 'GitHub',
+  manual: 'Manual',
+};
+
+// Category colors
+export const SHIP_CATEGORY_COLORS: Record<ShipCategory, string> = {
+  miniapp: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  token: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+  protocol: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  tool: 'bg-green-500/20 text-green-300 border-green-500/30',
+  agent: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  social: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  nft: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+  infra: 'bg-gray-500/20 text-gray-300 border-gray-500/30',
+  other: 'bg-white/10 text-gray-300 border-white/20',
+};
 
 // ============================================================================
 // ETHOS HELPERS

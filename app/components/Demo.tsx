@@ -23,6 +23,11 @@ import {
   getBuilderIDInfo,
   getBuilderIDShareUrl,
   getLeaderboardShareUrl,
+  getTrackedShips,
+  getShipStats,
+  SHIP_CATEGORY_LABELS,
+  SHIP_SOURCE_LABELS,
+  SHIP_CATEGORY_COLORS,
   type TokenAnalysis,
   type Builder,
   type BuilderCast,
@@ -31,6 +36,10 @@ import {
   type BuilderIDRecord,
   type BuilderIDPreview,
   type AvatarTraits,
+  type Ship,
+  type ShipCategory,
+  type ShipSource,
+  type ShipStats,
 } from '../lib/api';
 import BaseStatsTicker from './BaseStatsTicker';
 import {
@@ -66,6 +75,8 @@ import {
   ShieldCheckIcon,
   StarIcon,
   ShareIcon,
+  FunnelIcon,
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import {
   HeartIcon as HeartSolid,
@@ -757,135 +768,281 @@ function BuildersView({ frameData }: { frameData: FrameContext | null }) {
 // SHIPPED PROJECTS VIEW
 // ============================================================================
 function ShippedView() {
+  const [tab, setTab] = useState<'ships' | 'casts'>('ships');
+  const [ships, setShips] = useState<Ship[]>([]);
+  const [stats, setStats] = useState<ShipStats | null>(null);
   const [projects, setProjects] = useState<BuilderCast[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState<ShipCategory | 'all'>('all');
+  const [sourceFilter, setSourceFilter] = useState<ShipSource | 'all'>('all');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const data = await getShippedProjects(20);
-      setProjects(data);
+      setLoading(true);
+      if (tab === 'ships') {
+        const [shipsData, statsData] = await Promise.all([
+          getTrackedShips({
+            category: categoryFilter === 'all' ? undefined : categoryFilter,
+            source: sourceFilter === 'all' ? undefined : sourceFilter,
+            limit: 50,
+          }),
+          getShipStats(),
+        ]);
+        setShips(shipsData);
+        setStats(statsData);
+      } else {
+        const data = await getShippedProjects(20);
+        setProjects(data);
+      }
       setLoading(false);
     }
     load();
-  }, []);
+  }, [tab, categoryFilter, sourceFilter]);
 
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        <SectionHeader
-          title="Shipped"
-          subtitle="Fresh projects from builders"
-          Icon={RocketLaunchIcon}
-          iconColor="text-orange-400"
-        />
-        <SkeletonList count={4} />
-      </div>
-    );
-  }
+  const CATEGORIES: (ShipCategory | 'all')[] = ['all', 'miniapp', 'token', 'agent', 'tool', 'protocol', 'social', 'nft', 'infra', 'other'];
+  const SOURCES: (ShipSource | 'all')[] = ['all', 'farcaster', 'clanker_news', 'clawcrunch', 'github', 'manual'];
 
   return (
     <div className="space-y-3">
       <SectionHeader
-        title="Shipped"
-        subtitle="Fresh projects from builders"
+        title="Ships"
+        subtitle="Ecosystem projects & launches"
         Icon={RocketLaunchIcon}
         iconColor="text-orange-400"
       />
 
-      <div className="space-y-2">
-        {projects.map((cast) => {
-          const miniAppUrls = extractMiniAppUrls(cast.text, cast.embeds || []);
-          return (
-            <div
-              key={cast.hash}
-              className="relative group"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-600/0 via-purple-600/5 to-purple-600/0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative p-4 bg-white/5 hover:bg-white/[0.07] backdrop-blur-sm rounded-xl border border-white/5 hover:border-purple-500/30 transition-all">
-                {/* Author */}
-                <div className="flex items-center gap-3 mb-3">
-                  {cast.authorPfpUrl && (
-                    <img
-                      src={cast.authorPfpUrl}
-                      alt={cast.authorUsername}
-                      className="w-8 h-8 rounded-full border border-white/10"
-                    />
-                  )}
-                  <div className="flex-1">
-                    <span className="text-sm font-medium text-white">
-                      {cast.authorDisplayName || cast.authorUsername}
-                    </span>
-                    <span className="text-xs text-gray-500 ml-2">
-                      {formatRelativeTime(cast.timestamp)}
-                    </span>
-                  </div>
-                </div>
+      {/* Tabs */}
+      <div className="flex gap-2 p-1 bg-white/5 rounded-lg">
+        <button
+          onClick={() => setTab('ships')}
+          className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+            tab === 'ships' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <CircleStackIcon className="w-3.5 h-3.5 inline mr-1.5" />
+          Tracked ({stats?.totalShips || '...'})
+        </button>
+        <button
+          onClick={() => setTab('casts')}
+          className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+            tab === 'casts' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <ChatBubbleLeftRightIcon className="w-3.5 h-3.5 inline mr-1.5" />
+          Casts
+        </button>
+      </div>
 
-                {/* Content */}
-                <p className="text-gray-300 text-sm leading-relaxed line-clamp-3">{cast.text}</p>
+      {/* Filters (Ships tab only) */}
+      {tab === 'ships' && (
+        <div className="space-y-2">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
+          >
+            <FunnelIcon className="w-4 h-4" />
+            Filters
+            {(categoryFilter !== 'all' || sourceFilter !== 'all') && (
+              <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded text-[10px]">
+                {[categoryFilter !== 'all' && categoryFilter, sourceFilter !== 'all' && sourceFilter].filter(Boolean).join(', ')}
+              </span>
+            )}
+          </button>
 
-                {/* Action Buttons */}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {/* View Cast - keeps mini app open */}
-                  <button
-                    onClick={() => {
-                      if (window.frame?.sdk) {
-                        window.frame.sdk.actions.viewCast({
-                          hash: cast.hash,
-                          authorUsername: cast.authorUsername,
-                          close: false,
-                        });
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-white/10 text-gray-300 rounded-full border border-white/20 hover:bg-white/20 transition-colors"
-                  >
-                    <EyeIcon className="w-3 h-3" />
-                    View Cast
-                  </button>
-
-                  {/* Mini App Links */}
-                  {miniAppUrls.map((url, i) => (
+          {showFilters && (
+            <div className="p-3 bg-white/5 rounded-lg border border-white/10 space-y-3">
+              {/* Category Filter */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">Category</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CATEGORIES.map((cat) => (
                     <button
-                      key={i}
-                      onClick={() => {
-                        if (window.frame?.sdk) {
-                          window.frame.sdk.actions.openUrl(url);
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded-full border border-purple-500/30 hover:bg-purple-500/30 transition-colors"
+                      key={cat}
+                      onClick={() => setCategoryFilter(cat)}
+                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                        categoryFilter === cat
+                          ? 'bg-purple-500/30 text-purple-300 border-purple-500/50'
+                          : 'bg-white/5 text-gray-400 border-white/10 hover:border-white/30'
+                      }`}
                     >
-                      <ArrowTopRightOnSquareIcon className="w-3 h-3" />
-                      Open App
+                      {cat === 'all' ? 'All' : SHIP_CATEGORY_LABELS[cat]}
                     </button>
                   ))}
                 </div>
+              </div>
 
-                {/* Engagement */}
-                <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                    </svg>
-                    {cast.likes}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
-                    </svg>
-                    {cast.recasts}
-                  </span>
-                  {cast.topics?.length > 0 && (
-                    <span className="text-purple-400/60">{cast.topics.slice(0, 2).join(' · ')}</span>
-                  )}
+              {/* Source Filter */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">Source</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {SOURCES.map((src) => (
+                    <button
+                      key={src}
+                      onClick={() => setSourceFilter(src)}
+                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                        sourceFilter === src
+                          ? 'bg-purple-500/30 text-purple-300 border-purple-500/50'
+                          : 'bg-white/5 text-gray-400 border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      {src === 'all' ? 'All' : SHIP_SOURCE_LABELS[src]}
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
 
-      {projects.length === 0 && (
-        <div className="text-center py-8 text-gray-500">No shipped projects found</div>
+              {/* Clear Filters */}
+              {(categoryFilter !== 'all' || sourceFilter !== 'all') && (
+                <button
+                  onClick={() => { setCategoryFilter('all'); setSourceFilter('all'); }}
+                  className="text-xs text-gray-500 hover:text-white"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : tab === 'ships' ? (
+        /* Ships List */
+        <div className="space-y-2">
+          {ships.map((ship) => (
+            <div key={ship.id} className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-600/0 via-purple-600/5 to-purple-600/0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative p-4 bg-white/5 hover:bg-white/[0.07] backdrop-blur-sm rounded-xl border border-white/5 hover:border-purple-500/30 transition-all">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="text-sm font-medium text-white line-clamp-1">{ship.name}</h3>
+                  <span className={`shrink-0 px-2 py-0.5 text-[10px] rounded-full border ${SHIP_CATEGORY_COLORS[ship.category]}`}>
+                    {SHIP_CATEGORY_LABELS[ship.category]}
+                  </span>
+                </div>
+
+                {/* Description */}
+                <p className="text-gray-400 text-xs leading-relaxed line-clamp-2 mb-3">
+                  {ship.description || 'No description'}
+                </p>
+
+                {/* Meta & Links */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                    <span>{SHIP_SOURCE_LABELS[ship.source]}</span>
+                    {ship.chain && <span className="text-purple-400">· {ship.chain}</span>}
+                    <span>· {formatRelativeTime(ship.publishedAt)}</span>
+                  </div>
+
+                  <div className="flex gap-1.5">
+                    {ship.sourceUrl && (
+                      <button
+                        onClick={() => window.frame?.sdk?.actions.openUrl(ship.sourceUrl)}
+                        className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                        title="View source"
+                      >
+                        <GlobeAltIcon className="w-3 h-3 text-gray-400" />
+                      </button>
+                    )}
+                    {ship.urls?.github && (
+                      <button
+                        onClick={() => window.frame?.sdk?.actions.openUrl(ship.urls.github!)}
+                        className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                        title="GitHub"
+                      >
+                        <LinkIcon className="w-3 h-3 text-gray-400" />
+                      </button>
+                    )}
+                    {ship.urls?.website && (
+                      <button
+                        onClick={() => window.frame?.sdk?.actions.openUrl(ship.urls.website!)}
+                        className="p-1.5 bg-purple-500/20 rounded-full hover:bg-purple-500/30 transition-colors"
+                        title="Website"
+                      >
+                        <ArrowTopRightOnSquareIcon className="w-3 h-3 text-purple-300" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tags */}
+                {ship.tags?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {ship.tags.slice(0, 4).map((tag, i) => (
+                      <span key={i} className="px-1.5 py-0.5 text-[10px] bg-white/5 text-gray-500 rounded">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {ships.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No ships found{categoryFilter !== 'all' || sourceFilter !== 'all' ? ' with current filters' : ''}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Casts List */
+        <div className="space-y-2">
+          {projects.map((cast) => {
+            const miniAppUrls = extractMiniAppUrls(cast.text, cast.embeds || []);
+            return (
+              <div key={cast.hash} className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-600/0 via-purple-600/5 to-purple-600/0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative p-4 bg-white/5 hover:bg-white/[0.07] backdrop-blur-sm rounded-xl border border-white/5 hover:border-purple-500/30 transition-all">
+                  <div className="flex items-center gap-3 mb-3">
+                    {cast.authorPfpUrl && (
+                      <img src={cast.authorPfpUrl} alt={cast.authorUsername} className="w-8 h-8 rounded-full border border-white/10" />
+                    )}
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-white">{cast.authorDisplayName || cast.authorUsername}</span>
+                      <span className="text-xs text-gray-500 ml-2">{formatRelativeTime(cast.timestamp)}</span>
+                    </div>
+                  </div>
+                  <p className="text-gray-300 text-sm leading-relaxed line-clamp-3">{cast.text}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => window.frame?.sdk?.actions.viewCast({ hash: cast.hash, authorUsername: cast.authorUsername, close: false })}
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-white/10 text-gray-300 rounded-full border border-white/20 hover:bg-white/20 transition-colors"
+                    >
+                      <EyeIcon className="w-3 h-3" />
+                      View
+                    </button>
+                    {miniAppUrls.map((url, i) => (
+                      <button
+                        key={i}
+                        onClick={() => window.frame?.sdk?.actions.openUrl(url)}
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded-full border border-purple-500/30 hover:bg-purple-500/30 transition-colors"
+                      >
+                        <ArrowTopRightOnSquareIcon className="w-3 h-3" />
+                        Open
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <HeartIcon className="w-3.5 h-3.5" />
+                      {cast.likes}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <ArrowPathRoundedSquareIcon className="w-3.5 h-3.5" />
+                      {cast.recasts}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {projects.length === 0 && (
+            <div className="text-center py-8 text-gray-500">No shipped projects found</div>
+          )}
+        </div>
       )}
     </div>
   );
