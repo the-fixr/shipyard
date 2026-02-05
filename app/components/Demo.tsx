@@ -1777,10 +1777,35 @@ function LaunchView() {
                   appName: appName || 'my-miniapp',
                   primaryColor: primaryColor,
                   features: features.join(','),
-                  returnUrl: window.location.origin + window.location.pathname,
+                  returnUrl: 'https://agent.fixr.nexus/api/github/oauth/complete',
                 });
-                // Redirect in same window for OAuth flow
-                window.location.href = `https://agent.fixr.nexus/api/github/oauth/authorize?${params.toString()}`;
+                // Open OAuth in popup window (required for embedded frames)
+                const width = 600;
+                const height = 700;
+                const left = window.screenX + (window.outerWidth - width) / 2;
+                const top = window.screenY + (window.outerHeight - height) / 2;
+                const popup = window.open(
+                  `https://agent.fixr.nexus/api/github/oauth/authorize?${params.toString()}`,
+                  'github-oauth',
+                  `width=${width},height=${height},left=${left},top=${top}`
+                );
+
+                // Listen for completion message from popup
+                const handleMessage = (event: MessageEvent) => {
+                  if (event.origin !== 'https://agent.fixr.nexus') return;
+                  if (event.data?.type === 'oauth-complete') {
+                    window.removeEventListener('message', handleMessage);
+                    if (event.data.success && event.data.repo) {
+                      setCreatedRepo(event.data.repo);
+                      setGithubUser(event.data.user || null);
+                      setStep(4);
+                    } else if (event.data.error) {
+                      setOauthError(event.data.error);
+                    }
+                    popup?.close();
+                  }
+                };
+                window.addEventListener('message', handleMessage);
               }}
               className="w-full p-4 bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/40 hover:to-emerald-600/40 rounded-xl border border-green-500/30 hover:border-green-500/50 transition-all group"
             >
