@@ -1598,11 +1598,13 @@ function LaunchView() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const popupRef = useRef<Window | null>(null);
   const popupCheckRef = useRef<NodeJS.Timeout | null>(null);
+  const oauthCompleteRef = useRef(false);
 
   // Listen for OAuth completion messages from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'oauth-complete') {
+        oauthCompleteRef.current = true;
         // Clear popup monitoring
         if (popupCheckRef.current) {
           clearInterval(popupCheckRef.current);
@@ -1650,8 +1652,20 @@ function LaunchView() {
     }
   }, []);
 
+  const cancelOAuth = () => {
+    if (popupCheckRef.current) {
+      clearInterval(popupCheckRef.current);
+      popupCheckRef.current = null;
+    }
+    if (popupRef.current && !popupRef.current.closed) {
+      popupRef.current.close();
+    }
+    setIsAuthenticating(false);
+  };
+
   const startOAuth = () => {
     if (isAuthenticating) return;
+    oauthCompleteRef.current = false;
     setIsAuthenticating(true);
     setOauthError(null);
 
@@ -1677,8 +1691,8 @@ function LaunchView() {
       if (popupRef.current && popupRef.current.closed) {
         clearInterval(popupCheckRef.current!);
         popupCheckRef.current = null;
-        // Only reset if we haven't received a success message
-        if (isAuthenticating && !createdRepo) {
+        // Only reset if OAuth didn't complete
+        if (!oauthCompleteRef.current) {
           setIsAuthenticating(false);
         }
       }
@@ -1866,9 +1880,21 @@ function LaunchView() {
                     {isAuthenticating ? 'Complete authorization in the popup window' : 'Sign in & create repo with your settings'}
                   </div>
                 </div>
-                <ArrowTopRightOnSquareIcon className="w-4 h-4 text-green-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                {!isAuthenticating && (
+                  <ArrowTopRightOnSquareIcon className="w-4 h-4 text-green-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                )}
               </div>
             </button>
+
+            {/* Cancel button when authenticating */}
+            {isAuthenticating && (
+              <button
+                onClick={cancelOAuth}
+                className="w-full p-2 text-center text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            )}
 
             <div className="flex items-center gap-3 text-[10px] text-gray-500">
               <div className="flex-1 h-px bg-white/10" />
