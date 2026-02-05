@@ -1777,7 +1777,6 @@ function LaunchView() {
                   appName: appName || 'my-miniapp',
                   primaryColor: primaryColor,
                   features: features.join(','),
-                  returnUrl: 'https://agent.fixr.nexus/api/github/oauth/complete',
                 });
                 // Open OAuth in popup window (required for embedded frames)
                 const width = 600;
@@ -1785,14 +1784,13 @@ function LaunchView() {
                 const left = window.screenX + (window.outerWidth - width) / 2;
                 const top = window.screenY + (window.outerHeight - height) / 2;
                 const popup = window.open(
-                  `https://agent.fixr.nexus/api/github/oauth/authorize?${params.toString()}`,
+                  `/api/github/oauth/authorize?${params.toString()}`,
                   'github-oauth',
                   `width=${width},height=${height},left=${left},top=${top}`
                 );
 
                 // Listen for completion message from popup
                 const handleMessage = (event: MessageEvent) => {
-                  if (event.origin !== 'https://agent.fixr.nexus') return;
                   if (event.data?.type === 'oauth-complete') {
                     window.removeEventListener('message', handleMessage);
                     if (event.data.success && event.data.repo) {
