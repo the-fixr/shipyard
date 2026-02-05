@@ -146,6 +146,175 @@ async function updateRepoFile(
   }
 }
 
+// Feature-specific dependencies
+const FEATURE_DEPS: Record<string, Record<string, string>> = {
+  wallet: {},  // Already included in base template
+  auth: {},    // Already included in base template
+  nft: {
+    '@zoralabs/coins-sdk': '^0.0.1',
+  },
+  token: {
+    '@zoralabs/coins-sdk': '^0.0.1',
+  },
+};
+
+// Feature-specific code files
+function getFeatureFiles(features: string[], primaryColor: string): Array<{ path: string; content: string }> {
+  const files: Array<{ path: string; content: string }> = [];
+
+  if (features.includes('nft')) {
+    files.push({
+      path: 'lib/nft.ts',
+      content: `// NFT utilities for minting and displaying NFTs
+import { createPublicClient, http } from 'viem';
+import { base } from 'viem/chains';
+
+export const publicClient = createPublicClient({
+  chain: base,
+  transport: http(),
+});
+
+// Example: Check if user owns a specific NFT
+export async function checkNFTOwnership(
+  contractAddress: \`0x\${string}\`,
+  ownerAddress: \`0x\${string}\`,
+  tokenId?: bigint
+): Promise<boolean> {
+  try {
+    const balance = await publicClient.readContract({
+      address: contractAddress,
+      abi: [{
+        name: 'balanceOf',
+        type: 'function',
+        stateMutability: 'view',
+        inputs: [{ name: 'owner', type: 'address' }],
+        outputs: [{ name: '', type: 'uint256' }],
+      }],
+      functionName: 'balanceOf',
+      args: [ownerAddress],
+    });
+    return balance > 0n;
+  } catch (error) {
+    console.error('Error checking NFT ownership:', error);
+    return false;
+  }
+}
+
+// Example: Get NFT metadata URI
+export async function getNFTMetadata(
+  contractAddress: \`0x\${string}\`,
+  tokenId: bigint
+): Promise<string | null> {
+  try {
+    const uri = await publicClient.readContract({
+      address: contractAddress,
+      abi: [{
+        name: 'tokenURI',
+        type: 'function',
+        stateMutability: 'view',
+        inputs: [{ name: 'tokenId', type: 'uint256' }],
+        outputs: [{ name: '', type: 'string' }],
+      }],
+      functionName: 'tokenURI',
+      args: [tokenId],
+    });
+    return uri;
+  } catch (error) {
+    console.error('Error getting NFT metadata:', error);
+    return null;
+  }
+}
+`,
+    });
+  }
+
+  if (features.includes('token')) {
+    files.push({
+      path: 'lib/token-gate.ts',
+      content: `// Token gating utilities
+import { createPublicClient, http, formatUnits } from 'viem';
+import { base } from 'viem/chains';
+
+export const publicClient = createPublicClient({
+  chain: base,
+  transport: http(),
+});
+
+// ERC20 ABI for balance checking
+const ERC20_ABI = [
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'decimals',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+] as const;
+
+// Check if user holds minimum token balance
+export async function checkTokenBalance(
+  tokenAddress: \`0x\${string}\`,
+  userAddress: \`0x\${string}\`,
+  minBalance: number = 0
+): Promise<{ hasAccess: boolean; balance: string }> {
+  try {
+    const [balance, decimals] = await Promise.all([
+      publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [userAddress],
+      }),
+      publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: 'decimals',
+      }),
+    ]);
+
+    const formattedBalance = formatUnits(balance, decimals);
+    const hasAccess = Number(formattedBalance) >= minBalance;
+
+    return { hasAccess, balance: formattedBalance };
+  } catch (error) {
+    console.error('Error checking token balance:', error);
+    return { hasAccess: false, balance: '0' };
+  }
+}
+
+// Token gate wrapper component example
+export function createTokenGate(tokenAddress: \`0x\${string}\`, minBalance: number = 1) {
+  return {
+    tokenAddress,
+    minBalance,
+    check: (userAddress: \`0x\${string}\`) => checkTokenBalance(tokenAddress, userAddress, minBalance),
+  };
+}
+`,
+    });
+  }
+
+  // Always add a config file with the primary color
+  files.push({
+    path: 'lib/config.ts',
+    content: `// App configuration
+export const config = {
+  primaryColor: '${primaryColor}',
+  features: ${JSON.stringify(features)},
+} as const;
+`,
+  });
+
+  return files;
+}
+
 async function customizeRepo(
   accessToken: string,
   owner: string,
@@ -188,7 +357,7 @@ async function customizeRepo(
     `Customize manifest for ${sanitizedName}`
   );
 
-  // Update package.json with app name
+  // Update package.json with app name and feature dependencies
   try {
     const pkgResponse = await fetch(
       `${GITHUB_API_URL}/repos/${owner}/${repoName}/contents/package.json`,
@@ -207,6 +376,14 @@ async function customizeRepo(
       pkg.name = slugName;
       pkg.description = `${sanitizedName} - A Farcaster mini app`;
 
+      // Add feature-specific dependencies
+      for (const feature of features) {
+        const deps = FEATURE_DEPS[feature];
+        if (deps) {
+          pkg.dependencies = { ...pkg.dependencies, ...deps };
+        }
+      }
+
       await updateRepoFile(
         accessToken,
         owner,
@@ -220,14 +397,39 @@ async function customizeRepo(
     // Non-critical, continue
   }
 
+  // Add feature-specific files
+  const featureFiles = getFeatureFiles(features, primaryColor);
+  for (const file of featureFiles) {
+    await updateRepoFile(
+      accessToken,
+      owner,
+      repoName,
+      file.path,
+      file.content,
+      `Add ${file.path}`
+    );
+  }
+
+  // Feature descriptions for README
+  const featureDescriptions: Record<string, string> = {
+    wallet: 'Native Farcaster wallet integration via frame SDK',
+    auth: 'Farcaster user authentication and context',
+    nft: 'NFT minting and display utilities (see `lib/nft.ts`)',
+    token: 'Token-gated access control (see `lib/token-gate.ts`)',
+  };
+
   // Update README
+  const featureList = features.length > 0
+    ? features.map(f => `- **${f.charAt(0).toUpperCase() + f.slice(1)}**: ${featureDescriptions[f] || f}`).join('\n')
+    : '- Farcaster mini app SDK integration\n- Wallet connection\n- User context';
+
   const readme = `# ${sanitizedName}
 
 A Farcaster mini app created with [Shipyard](https://shipyard.fixr.nexus).
 
 ## Features
 
-${features.length > 0 ? features.map(f => `- ${f}`).join('\n') : '- Farcaster mini app SDK integration\n- Wallet connection\n- User context'}
+${featureList}
 
 ## Quick Start
 
@@ -236,6 +438,46 @@ npm install
 npm run dev
 \`\`\`
 
+## Configuration
+
+Your app config is in \`lib/config.ts\`:
+
+\`\`\`typescript
+export const config = {
+  primaryColor: '${primaryColor}',
+  features: ${JSON.stringify(features)},
+};
+\`\`\`
+
+${features.includes('token') ? `
+## Token Gating
+
+Use the token gate utility in \`lib/token-gate.ts\`:
+
+\`\`\`typescript
+import { checkTokenBalance } from '@/lib/token-gate';
+
+const { hasAccess, balance } = await checkTokenBalance(
+  '0xYourTokenAddress',
+  userWalletAddress,
+  100 // minimum balance required
+);
+\`\`\`
+` : ''}
+${features.includes('nft') ? `
+## NFT Support
+
+Use the NFT utilities in \`lib/nft.ts\`:
+
+\`\`\`typescript
+import { checkNFTOwnership, getNFTMetadata } from '@/lib/nft';
+
+const ownsNFT = await checkNFTOwnership(
+  '0xYourNFTContract',
+  userWalletAddress
+);
+\`\`\`
+` : ''}
 ## Deploy
 
 Deploy to Vercel:
