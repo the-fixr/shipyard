@@ -1812,32 +1812,21 @@ function LaunchView() {
               ))}
             </div>
 
-            <div className="p-3 bg-gradient-to-r from-green-900/20 to-emerald-900/20 rounded-xl border border-green-500/20">
+            <div className="p-3 bg-gradient-to-r from-purple-900/20 to-pink-900/20 rounded-xl border border-purple-500/20">
               <div className="flex items-center gap-2 mb-2">
-                <CheckCircleIcon className="w-4 h-4 text-green-400" />
-                <span className="text-xs font-medium text-green-300">After Deployment</span>
+                <BookOpenIcon className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-medium text-purple-300">Need Help?</span>
               </div>
-              <p className="text-[10px] text-green-200/70">
-                Register your app at{' '}
-                <button
-                  onClick={() => openUrl('https://warpcast.com/~/developers')}
-                  className="text-green-300 underline"
-                >
-                  warpcast.com/~/developers
-                </button>
-                {' '}to get your app listed on Farcaster.
+              <p className="text-[10px] text-purple-200/70 mb-2">
+                Check out the Learn section in Shipyard for comprehensive developer resources on building Farcaster apps.
               </p>
+              <button
+                onClick={() => setStep(0)}
+                className="text-[10px] text-purple-300 underline"
+              >
+                ← Back to start
+              </button>
             </div>
-
-            <button
-              onClick={() => openUrl('https://miniapps.farcaster.xyz')}
-              className="w-full p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 hover:border-white/20 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-white">Read the full Mini Apps docs</div>
-                <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5 text-gray-400" />
-              </div>
-            </button>
           </div>
         );
 
