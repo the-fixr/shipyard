@@ -1779,7 +1779,8 @@ function LaunchView() {
                   features: features.join(','),
                   returnUrl: window.location.origin + window.location.pathname,
                 });
-                openUrl(`https://agent.fixr.nexus/api/github/oauth/authorize?${params.toString()}`);
+                // Redirect in same window for OAuth flow
+                window.location.href = `https://agent.fixr.nexus/api/github/oauth/authorize?${params.toString()}`;
               }}
               className="w-full p-4 bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/40 hover:to-emerald-600/40 rounded-xl border border-green-500/30 hover:border-green-500/50 transition-all group"
             >
