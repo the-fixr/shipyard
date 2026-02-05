@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const GITHUB_API_URL = 'https://api.github.com';
+const TEMPLATE_OWNER = 'the-fixr';
+const TEMPLATE_REPO = 'farcaster-miniapp-template';
 
 function utf8ToBase64(str: string): string {
   return Buffer.from(str, 'utf-8').toString('base64');
@@ -57,102 +59,15 @@ async function getGitHubUser(accessToken: string): Promise<GitHubUser | null> {
   return response.json();
 }
 
-async function createUserRepo(
+async function createRepoFromTemplate(
   accessToken: string,
   repoName: string,
-  description: string,
-  files: Array<{ path: string; content: string }>
-): Promise<{ success: boolean; repoUrl?: string; error?: string }> {
+  description: string
+): Promise<{ success: boolean; repoUrl?: string; owner?: string; error?: string }> {
   try {
-    // Create repository
-    const createResponse = await fetch(`${GITHUB_API_URL}/user/repos`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: repoName,
-        description,
-        private: false,
-        auto_init: true,
-      }),
-    });
-
-    if (!createResponse.ok) {
-      const error = await createResponse.json();
-      return { success: false, error: error.message || 'Failed to create repo' };
-    }
-
-    const repo = await createResponse.json();
-    const [owner, repoNameActual] = repo.full_name.split('/');
-
-    // Wait for GitHub to initialize
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Get default branch ref
-    const refResponse = await fetch(
-      `${GITHUB_API_URL}/repos/${owner}/${repoNameActual}/git/ref/heads/main`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/vnd.github+json',
-        },
-      }
-    );
-
-    if (!refResponse.ok) {
-      return { success: true, repoUrl: repo.html_url };
-    }
-
-    const refData = await refResponse.json();
-    const currentCommitSha = refData.object.sha;
-
-    // Get tree
-    const commitResponse = await fetch(
-      `${GITHUB_API_URL}/repos/${owner}/${repoNameActual}/git/commits/${currentCommitSha}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/vnd.github+json',
-        },
-      }
-    );
-    const commitData = await commitResponse.json();
-    const treeSha = commitData.tree.sha;
-
-    // Create blobs
-    const blobs = await Promise.all(
-      files.map(async (file) => {
-        const blobResponse = await fetch(
-          `${GITHUB_API_URL}/repos/${owner}/${repoNameActual}/git/blobs`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Accept': 'application/vnd.github+json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              content: utf8ToBase64(file.content),
-              encoding: 'base64',
-            }),
-          }
-        );
-        const blobData = await blobResponse.json();
-        return {
-          path: file.path,
-          mode: '100644' as const,
-          type: 'blob' as const,
-          sha: blobData.sha,
-        };
-      })
-    );
-
-    // Create tree
-    const treeResponse = await fetch(
-      `${GITHUB_API_URL}/repos/${owner}/${repoNameActual}/git/trees`,
+    // Use GitHub's template repository API
+    const response = await fetch(
+      `${GITHUB_API_URL}/repos/${TEMPLATE_OWNER}/${TEMPLATE_REPO}/generate`,
       {
         method: 'POST',
         headers: {
@@ -161,102 +76,189 @@ async function createUserRepo(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          base_tree: treeSha,
-          tree: blobs,
+          name: repoName,
+          description,
+          private: false,
+          include_all_branches: false,
         }),
       }
     );
-    const treeData = await treeResponse.json();
 
-    // Create commit
-    const newCommitResponse = await fetch(
-      `${GITHUB_API_URL}/repos/${owner}/${repoNameActual}/git/commits`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: 'Initialize Farcaster mini app from Fixr template',
-          tree: treeData.sha,
-          parents: [currentCommitSha],
-        }),
-      }
-    );
-    const newCommitData = await newCommitResponse.json();
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.message || 'Failed to create repo from template' };
+    }
 
-    // Update ref
-    await fetch(
-      `${GITHUB_API_URL}/repos/${owner}/${repoNameActual}/git/refs/heads/main`,
-      {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ sha: newCommitData.sha }),
-      }
-    );
-
-    return { success: true, repoUrl: repo.html_url };
+    const repo = await response.json();
+    return { success: true, repoUrl: repo.html_url, owner: repo.owner.login };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 }
 
-function generateTemplateFiles(appName: string, primaryColor: string, features: string[]): Array<{ path: string; content: string }> {
-  const sanitizedName = appName.replace(/[^a-zA-Z0-9\s-]/g, '');
-  const repoName = appName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+async function updateRepoFile(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  path: string,
+  content: string,
+  message: string
+): Promise<boolean> {
+  try {
+    // Get current file to get its SHA
+    const getResponse = await fetch(
+      `${GITHUB_API_URL}/repos/${owner}/${repo}/contents/${path}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/vnd.github+json',
+        },
+      }
+    );
 
-  return [
-    {
-      path: 'package.json',
-      content: JSON.stringify({
-        name: repoName,
-        version: '1.0.0',
-        description: `${sanitizedName} - A Farcaster mini app`,
-        private: true,
-        scripts: { dev: 'next dev', build: 'next build', start: 'next start', lint: 'next lint' },
-        dependencies: {
-          '@farcaster/miniapp-sdk': '^0.2.3',
-          '@farcaster/miniapp-wagmi-connector': '^1.1.1',
-          '@tanstack/react-query': '^5.62.7',
-          next: '^15.1.0',
-          react: '^19.0.0',
-          'react-dom': '^19.0.0',
-          viem: '^2.21.0',
-          wagmi: '^2.14.0',
+    let sha: string | undefined;
+    if (getResponse.ok) {
+      const fileData = await getResponse.json();
+      sha = fileData.sha;
+    }
+
+    // Update or create file
+    const updateResponse = await fetch(
+      `${GITHUB_API_URL}/repos/${owner}/${repo}/contents/${path}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
         },
-        devDependencies: {
-          '@types/node': '^20',
-          '@types/react': '^19',
-          typescript: '^5',
-          tailwindcss: '^3.4.1',
-          postcss: '^8',
-        },
-      }, null, 2),
-    },
-    {
-      path: 'README.md',
-      content: `# ${sanitizedName}\n\nA Farcaster mini app created with [Shipyard](https://shipyard.fixr.nexus).\n\n## Quick Start\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n\nBuilt with 💜 by [Fixr](https://fixr.nexus)`,
-    },
-    {
-      path: 'public/manifest.json',
-      content: JSON.stringify({
-        version: '1',
+        body: JSON.stringify({
+          message,
+          content: utf8ToBase64(content),
+          sha,
+        }),
+      }
+    );
+
+    return updateResponse.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function customizeRepo(
+  accessToken: string,
+  owner: string,
+  repoName: string,
+  appName: string,
+  primaryColor: string,
+  features: string[]
+): Promise<void> {
+  const sanitizedName = appName.replace(/[^a-zA-Z0-9\s-]/g, '');
+  const slugName = appName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+
+  // Wait for GitHub to fully initialize the repo
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  // Update manifest.json with app name and color
+  const manifest = {
+    version: '1',
+    name: sanitizedName,
+    homeUrl: 'https://your-app.vercel.app',
+    imageUrl: 'https://your-app.vercel.app/og-image.png',
+    iconUrl: 'https://your-app.vercel.app/icon.png',
+    button: {
+      title: `Launch ${sanitizedName}`,
+      action: {
+        type: 'launch_frame',
         name: sanitizedName,
-        homeUrl: 'https://your-app.vercel.app',
-        button: { title: `Launch ${sanitizedName}`, action: { type: 'launch_frame', name: sanitizedName, url: 'https://your-app.vercel.app', splashBackgroundColor: primaryColor } },
-      }, null, 2),
+        url: 'https://your-app.vercel.app',
+        splashImageUrl: 'https://your-app.vercel.app/splash.png',
+        splashBackgroundColor: primaryColor,
+      },
     },
-    {
-      path: '.gitignore',
-      content: 'node_modules/\n.next/\n.env\n.env.local\n',
-    },
-  ];
+  };
+
+  await updateRepoFile(
+    accessToken,
+    owner,
+    repoName,
+    'public/manifest.json',
+    JSON.stringify(manifest, null, 2),
+    `Customize manifest for ${sanitizedName}`
+  );
+
+  // Update package.json with app name
+  try {
+    const pkgResponse = await fetch(
+      `${GITHUB_API_URL}/repos/${owner}/${repoName}/contents/package.json`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/vnd.github+json',
+        },
+      }
+    );
+
+    if (pkgResponse.ok) {
+      const pkgFile = await pkgResponse.json();
+      const pkgContent = Buffer.from(pkgFile.content, 'base64').toString('utf-8');
+      const pkg = JSON.parse(pkgContent);
+      pkg.name = slugName;
+      pkg.description = `${sanitizedName} - A Farcaster mini app`;
+
+      await updateRepoFile(
+        accessToken,
+        owner,
+        repoName,
+        'package.json',
+        JSON.stringify(pkg, null, 2),
+        `Update package.json for ${sanitizedName}`
+      );
+    }
+  } catch {
+    // Non-critical, continue
+  }
+
+  // Update README
+  const readme = `# ${sanitizedName}
+
+A Farcaster mini app created with [Shipyard](https://shipyard.fixr.nexus).
+
+## Features
+
+${features.length > 0 ? features.map(f => `- ${f}`).join('\n') : '- Farcaster mini app SDK integration\n- Wallet connection\n- User context'}
+
+## Quick Start
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+## Deploy
+
+Deploy to Vercel:
+
+\`\`\`bash
+vercel
+\`\`\`
+
+Then update the URLs in \`public/manifest.json\` with your deployed URL.
+
+---
+
+Built with 💜 by [Fixr](https://fixr.nexus)
+`;
+
+  await updateRepoFile(
+    accessToken,
+    owner,
+    repoName,
+    'README.md',
+    readme,
+    `Update README for ${sanitizedName}`
+  );
 }
 
 export async function GET(request: NextRequest) {
@@ -300,12 +302,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(completeUrl);
   }
 
-  // Create repo
+  // Create repo from template
   const repoName = state.appName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-  const files = generateTemplateFiles(state.appName, state.primaryColor, state.features);
-  const result = await createUserRepo(accessToken, repoName, `${state.appName} - A Farcaster mini app`, files);
+  const result = await createRepoFromTemplate(
+    accessToken,
+    repoName,
+    `${state.appName} - A Farcaster mini app`
+  );
 
-  if (result.success && result.repoUrl) {
+  if (result.success && result.repoUrl && result.owner) {
+    // Customize the repo with user's settings
+    await customizeRepo(
+      accessToken,
+      result.owner,
+      repoName,
+      state.appName,
+      state.primaryColor,
+      state.features
+    );
+
     completeUrl.searchParams.set('success', 'true');
     completeUrl.searchParams.set('repo', result.repoUrl);
     completeUrl.searchParams.set('user', user.login);
