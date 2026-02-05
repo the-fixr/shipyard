@@ -1592,6 +1592,30 @@ function LaunchView() {
   const [appName, setAppName] = useState('');
   const [features, setFeatures] = useState<string[]>([]);
   const [primaryColor, setPrimaryColor] = useState('#8B5CF6'); // Purple default
+  const [createdRepo, setCreatedRepo] = useState<string | null>(null);
+  const [githubUser, setGithubUser] = useState<string | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  // Check for OAuth callback params on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get('success');
+    const repo = params.get('repo');
+    const user = params.get('user');
+    const error = params.get('error');
+
+    if (success === 'true' && repo) {
+      setCreatedRepo(decodeURIComponent(repo));
+      setGithubUser(user ? decodeURIComponent(user) : null);
+      setStep(4); // Jump to deploy step
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (error) {
+      setOauthError(decodeURIComponent(error));
+      setStep(3); // Stay on clone step
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const openUrl = (url: string) => {
     if (window.frame?.sdk) {
@@ -1735,53 +1759,79 @@ function LaunchView() {
       case 3:
         return (
           <div className="space-y-4">
-            <p className="text-sm text-gray-400">Clone the Fixr template to get started:</p>
+            {oauthError && (
+              <div className="p-3 bg-red-900/20 rounded-xl border border-red-500/30">
+                <div className="flex items-center gap-2">
+                  <XCircleIcon className="w-4 h-4 text-red-400" />
+                  <span className="text-xs text-red-300">GitHub auth failed: {oauthError}</span>
+                </div>
+              </div>
+            )}
 
+            <p className="text-sm text-gray-400">Create your personalized repo:</p>
+
+            {/* GitHub OAuth - Create in User's Account */}
             <button
-              onClick={() => openUrl(TEMPLATE_URL)}
-              className="w-full p-4 bg-gradient-to-r from-purple-600/30 to-pink-600/30 hover:from-purple-600/40 hover:to-pink-600/40 rounded-xl border border-purple-500/30 hover:border-purple-500/50 transition-all group"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  appName: appName || 'my-miniapp',
+                  primaryColor: primaryColor,
+                  features: features.join(','),
+                  returnUrl: window.location.origin + window.location.pathname,
+                });
+                openUrl(`https://agent.fixr.nexus/api/github/oauth/authorize?${params.toString()}`);
+              }}
+              className="w-full p-4 bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/40 hover:to-emerald-600/40 rounded-xl border border-green-500/30 hover:border-green-500/50 transition-all group"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-                  <CommandLineIcon className="w-5 h-5 text-purple-400" />
+                  <svg className="w-5 h-5 text-green-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                  </svg>
                 </div>
                 <div className="flex-1 text-left">
-                  <div className="text-sm font-medium text-white">farcaster-miniapp-template</div>
-                  <div className="text-[10px] text-purple-300/70">Click to open on GitHub</div>
+                  <div className="text-sm font-medium text-white">Create in My GitHub</div>
+                  <div className="text-[10px] text-green-300/70">Sign in & create repo with your settings</div>
                 </div>
-                <ArrowTopRightOnSquareIcon className="w-4 h-4 text-purple-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                <ArrowTopRightOnSquareIcon className="w-4 h-4 text-green-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </div>
             </button>
 
-            <div className="p-3 bg-white/5 rounded-xl border border-white/10">
-              <div className="text-[10px] font-medium text-white mb-2">Quick Start:</div>
-              <div className="font-mono text-[10px] text-purple-300 bg-black/30 p-2 rounded">
-                git clone {TEMPLATE_URL}.git {appName.toLowerCase().replace(/\s+/g, '-') || 'my-app'}
-              </div>
+            <div className="flex items-center gap-3 text-[10px] text-gray-500">
+              <div className="flex-1 h-px bg-white/10" />
+              <span>or clone manually</span>
+              <div className="flex-1 h-px bg-white/10" />
             </div>
 
+            {/* Manual Clone Option */}
+            <button
+              onClick={() => openUrl(TEMPLATE_URL)}
+              className="w-full p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 hover:border-white/20 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <CommandLineIcon className="w-4 h-4 text-gray-400" />
+                <div className="flex-1 text-left">
+                  <div className="text-xs text-white">View template on GitHub</div>
+                  <div className="text-[9px] text-gray-500">Fork or clone the repo yourself</div>
+                </div>
+                <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5 text-gray-500" />
+              </div>
+            </button>
+
             <div className="space-y-2">
-              <div className="text-[10px] font-medium text-white">Template includes:</div>
+              <div className="text-[10px] font-medium text-white">Your repo will include:</div>
               <ul className="text-[10px] text-gray-400 space-y-1">
                 <li className="flex items-center gap-2">
                   <CheckCircleIcon className="w-3 h-3 text-green-400" />
-                  @farcaster/miniapp-sdk integration
+                  App name: <span className="text-purple-300">{appName || 'my-miniapp'}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircleIcon className="w-3 h-3 text-green-400" />
-                  Native wallet connector (wagmi)
+                  Brand color: <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: primaryColor }} />
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircleIcon className="w-3 h-3 text-green-400" />
-                  Next.js 15 + React 19 + TypeScript
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircleIcon className="w-3 h-3 text-green-400" />
-                  Tailwind CSS styling
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircleIcon className="w-3 h-3 text-green-400" />
-                  Security best practices
+                  Features: {features.length > 0 ? features.join(', ') : 'Base template'}
                 </li>
               </ul>
             </div>
@@ -1791,22 +1841,47 @@ function LaunchView() {
       case 4:
         return (
           <div className="space-y-4">
-            <p className="text-sm text-gray-400">Follow these steps to deploy your mini app:</p>
+            {/* Success message if repo was created via OAuth */}
+            {createdRepo && (
+              <div className="p-4 bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-xl border border-green-500/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircleIcon className="w-5 h-5 text-green-400" />
+                  <span className="text-sm font-medium text-green-300">Repo Created!</span>
+                </div>
+                <p className="text-[11px] text-green-200/80 mb-3">
+                  Your mini app repo is ready{githubUser ? ` in @${githubUser}'s GitHub` : ''}.
+                </p>
+                <button
+                  onClick={() => openUrl(createdRepo)}
+                  className="w-full p-2.5 bg-green-500/20 hover:bg-green-500/30 rounded-lg border border-green-500/40 transition-all flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4 text-green-300" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                  </svg>
+                  <span className="text-xs font-medium text-green-200">Open Your Repo</span>
+                </button>
+              </div>
+            )}
+
+            <p className="text-sm text-gray-400">
+              {createdRepo ? 'Now deploy your mini app:' : 'Follow these steps to deploy your mini app:'}
+            </p>
 
             <div className="space-y-2">
               {[
-                { step: 1, title: 'Install dependencies', cmd: 'npm install' },
-                { step: 2, title: 'Configure .env', cmd: 'cp .env.example .env.local' },
-                { step: 3, title: 'Start development', cmd: 'npm run dev' },
-                { step: 4, title: 'Deploy to Vercel', cmd: 'vercel' },
-              ].map((item) => (
+                { step: 1, title: createdRepo ? 'Clone your repo' : 'Install dependencies', cmd: createdRepo ? `git clone ${createdRepo}.git` : 'npm install' },
+                { step: 2, title: 'Install dependencies', cmd: 'npm install', skip: !createdRepo },
+                { step: 3, title: 'Configure .env', cmd: 'cp .env.example .env.local' },
+                { step: 4, title: 'Start development', cmd: 'npm run dev' },
+                { step: 5, title: 'Deploy to Vercel', cmd: 'vercel' },
+              ].filter(item => !item.skip).map((item, idx) => (
                 <div key={item.step} className="flex items-start gap-3 p-2.5 bg-white/5 rounded-lg border border-white/10">
                   <div className="w-5 h-5 rounded-full bg-purple-500/30 text-purple-300 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                    {item.step}
+                    {idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-white">{item.title}</div>
-                    <code className="text-[9px] text-purple-300">{item.cmd}</code>
+                    <code className="text-[9px] text-purple-300 break-all">{item.cmd}</code>
                   </div>
                 </div>
               ))}
