@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { encodeFunctionData, parseAbi } from 'viem';
 import type { FrameContext } from '../types/frame';
 import {
@@ -1596,11 +1596,18 @@ function LaunchView() {
   const [githubUser, setGithubUser] = useState<string | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const popupRef = useRef<Window | null>(null);
+  const popupCheckRef = useRef<NodeJS.Timeout | null>(null);
 
   // Listen for OAuth completion messages from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'oauth-complete') {
+        // Clear popup monitoring
+        if (popupCheckRef.current) {
+          clearInterval(popupCheckRef.current);
+          popupCheckRef.current = null;
+        }
         setIsAuthenticating(false);
         if (event.data.success && event.data.repo) {
           setCreatedRepo(event.data.repo);
@@ -1614,7 +1621,12 @@ function LaunchView() {
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      if (popupCheckRef.current) {
+        clearInterval(popupCheckRef.current);
+      }
+    };
   }, []);
 
   // Check for OAuth callback params on mount (fallback)
@@ -1637,6 +1649,41 @@ function LaunchView() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  const startOAuth = () => {
+    if (isAuthenticating) return;
+    setIsAuthenticating(true);
+    setOauthError(null);
+
+    const params = new URLSearchParams({
+      appName: appName || 'my-miniapp',
+      primaryColor: primaryColor,
+      features: features.join(','),
+    });
+
+    // Open OAuth in popup window
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    popupRef.current = window.open(
+      `/api/github/oauth/authorize?${params.toString()}`,
+      'github-oauth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+
+    // Monitor popup - check if it was closed without completing
+    popupCheckRef.current = setInterval(() => {
+      if (popupRef.current && popupRef.current.closed) {
+        clearInterval(popupCheckRef.current!);
+        popupCheckRef.current = null;
+        // Only reset if we haven't received a success message
+        if (isAuthenticating && !createdRepo) {
+          setIsAuthenticating(false);
+        }
+      }
+    }, 500);
+  };
 
   const openUrl = (url: string) => {
     if (window.frame?.sdk) {
@@ -1793,26 +1840,7 @@ function LaunchView() {
 
             {/* GitHub OAuth - Create in User's Account */}
             <button
-              onClick={() => {
-                if (isAuthenticating) return;
-                setIsAuthenticating(true);
-                setOauthError(null);
-                const params = new URLSearchParams({
-                  appName: appName || 'my-miniapp',
-                  primaryColor: primaryColor,
-                  features: features.join(','),
-                });
-                // Open OAuth in popup window (required for embedded frames)
-                const width = 600;
-                const height = 700;
-                const left = window.screenX + (window.outerWidth - width) / 2;
-                const top = window.screenY + (window.outerHeight - height) / 2;
-                window.open(
-                  `/api/github/oauth/authorize?${params.toString()}`,
-                  'github-oauth',
-                  `width=${width},height=${height},left=${left},top=${top}`
-                );
-              }}
+              onClick={startOAuth}
               disabled={isAuthenticating}
               className={`w-full p-4 rounded-xl border transition-all group ${
                 isAuthenticating
