@@ -77,12 +77,13 @@ import {
   ShareIcon,
   FunnelIcon,
   GlobeAltIcon,
+  CommandLineIcon,
 } from '@heroicons/react/24/outline';
 import {
   HeartIcon as HeartSolid,
 } from '@heroicons/react/24/solid';
 
-type View = 'home' | 'analyze' | 'builders' | 'shipped' | 'rugs' | 'submit' | 'learn' | 'builderid';
+type View = 'home' | 'analyze' | 'builders' | 'shipped' | 'rugs' | 'submit' | 'learn' | 'builderid' | 'launch';
 
 // ============================================================================
 // TOKEN ANALYSIS CACHE
@@ -1584,6 +1585,339 @@ function LearnView() {
 }
 
 // ============================================================================
+// LAUNCH VIEW - Mini App Launchpad
+// ============================================================================
+function LaunchView() {
+  const [step, setStep] = useState(0);
+  const [appName, setAppName] = useState('');
+  const [features, setFeatures] = useState<string[]>([]);
+  const [primaryColor, setPrimaryColor] = useState('#8B5CF6'); // Purple default
+
+  const openUrl = (url: string) => {
+    if (window.frame?.sdk) {
+      window.frame.sdk.actions.openUrl(url);
+    } else {
+      window.open(url, '_blank');
+    }
+  };
+
+  const TEMPLATE_URL = 'https://github.com/the-fixr/farcaster-miniapp-template';
+
+  const FEATURE_OPTIONS = [
+    { id: 'wallet', name: 'Wallet Connect', desc: 'Native Farcaster wallet integration', icon: '💳' },
+    { id: 'auth', name: 'User Auth', desc: 'Farcaster sign-in & context', icon: '🔐' },
+    { id: 'nft', name: 'NFT Support', desc: 'Mint and display NFTs', icon: '🖼️' },
+    { id: 'token', name: 'Token Gating', desc: 'Token-based access control', icon: '🎟️' },
+  ];
+
+  const COLOR_OPTIONS = [
+    { name: 'Purple', value: '#8B5CF6' },
+    { name: 'Blue', value: '#3B82F6' },
+    { name: 'Green', value: '#10B981' },
+    { name: 'Pink', value: '#EC4899' },
+    { name: 'Orange', value: '#F97316' },
+    { name: 'Cyan', value: '#06B6D4' },
+  ];
+
+  const steps = [
+    { title: 'Name', desc: 'Choose your app name' },
+    { title: 'Features', desc: 'Select features to include' },
+    { title: 'Style', desc: 'Pick your brand colors' },
+    { title: 'Clone', desc: 'Get the template' },
+    { title: 'Deploy', desc: 'Ship your mini app' },
+  ];
+
+  const toggleFeature = (id: string) => {
+    setFeatures(prev =>
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    );
+  };
+
+  const canProceed = () => {
+    if (step === 0) return appName.trim().length >= 2;
+    return true;
+  };
+
+  const renderStepContent = () => {
+    switch (step) {
+      case 0:
+        return (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400">What will you call your mini app?</p>
+            <input
+              type="text"
+              value={appName}
+              onChange={(e) => setAppName(e.target.value)}
+              placeholder="My Awesome App"
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30"
+              autoFocus
+            />
+            <p className="text-[10px] text-gray-500">
+              This will be displayed in Farcaster when users open your app.
+            </p>
+          </div>
+        );
+
+      case 1:
+        return (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-400">Select the features you want to include:</p>
+            <div className="grid grid-cols-2 gap-2">
+              {FEATURE_OPTIONS.map((feature) => {
+                const isSelected = features.includes(feature.id);
+                return (
+                  <button
+                    key={feature.id}
+                    onClick={() => toggleFeature(feature.id)}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      isSelected
+                        ? 'bg-purple-500/20 border-purple-500/50'
+                        : 'bg-white/5 border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="text-lg mb-1">{feature.icon}</div>
+                    <div className="text-xs font-medium text-white">{feature.name}</div>
+                    <div className="text-[9px] text-gray-500">{feature.desc}</div>
+                    {isSelected && (
+                      <CheckCircleIcon className="absolute top-2 right-2 w-4 h-4 text-purple-400" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-gray-500">
+              The template includes wallet connect by default. Additional features can be enabled.
+            </p>
+          </div>
+        );
+
+      case 2:
+        return (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400">Pick your primary brand color:</p>
+            <div className="grid grid-cols-3 gap-2">
+              {COLOR_OPTIONS.map((color) => (
+                <button
+                  key={color.value}
+                  onClick={() => setPrimaryColor(color.value)}
+                  className={`p-3 rounded-xl border text-center transition-all ${
+                    primaryColor === color.value
+                      ? 'border-white/50 scale-105'
+                      : 'border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <div
+                    className="w-8 h-8 rounded-full mx-auto mb-1.5"
+                    style={{ backgroundColor: color.value }}
+                  />
+                  <div className="text-[10px] text-white">{color.name}</div>
+                </button>
+              ))}
+            </div>
+            <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+              <div className="text-[10px] text-gray-400 mb-2">Preview:</div>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <RocketLaunchIcon className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-white">{appName || 'My App'}</div>
+                  <div className="text-[9px] text-gray-500">Farcaster Mini App</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400">Clone the Fixr template to get started:</p>
+
+            <button
+              onClick={() => openUrl(TEMPLATE_URL)}
+              className="w-full p-4 bg-gradient-to-r from-purple-600/30 to-pink-600/30 hover:from-purple-600/40 hover:to-pink-600/40 rounded-xl border border-purple-500/30 hover:border-purple-500/50 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
+                  <CommandLineIcon className="w-5 h-5 text-purple-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="text-sm font-medium text-white">farcaster-miniapp-template</div>
+                  <div className="text-[10px] text-purple-300/70">Click to open on GitHub</div>
+                </div>
+                <ArrowTopRightOnSquareIcon className="w-4 h-4 text-purple-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </div>
+            </button>
+
+            <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+              <div className="text-[10px] font-medium text-white mb-2">Quick Start:</div>
+              <div className="font-mono text-[10px] text-purple-300 bg-black/30 p-2 rounded">
+                git clone {TEMPLATE_URL}.git {appName.toLowerCase().replace(/\s+/g, '-') || 'my-app'}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-[10px] font-medium text-white">Template includes:</div>
+              <ul className="text-[10px] text-gray-400 space-y-1">
+                <li className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-3 h-3 text-green-400" />
+                  @farcaster/miniapp-sdk integration
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-3 h-3 text-green-400" />
+                  Native wallet connector (wagmi)
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-3 h-3 text-green-400" />
+                  Next.js 15 + React 19 + TypeScript
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-3 h-3 text-green-400" />
+                  Tailwind CSS styling
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-3 h-3 text-green-400" />
+                  Security best practices
+                </li>
+              </ul>
+            </div>
+          </div>
+        );
+
+      case 4:
+        return (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400">Follow these steps to deploy your mini app:</p>
+
+            <div className="space-y-2">
+              {[
+                { step: 1, title: 'Install dependencies', cmd: 'npm install' },
+                { step: 2, title: 'Configure .env', cmd: 'cp .env.example .env.local' },
+                { step: 3, title: 'Start development', cmd: 'npm run dev' },
+                { step: 4, title: 'Deploy to Vercel', cmd: 'vercel' },
+              ].map((item) => (
+                <div key={item.step} className="flex items-start gap-3 p-2.5 bg-white/5 rounded-lg border border-white/10">
+                  <div className="w-5 h-5 rounded-full bg-purple-500/30 text-purple-300 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                    {item.step}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-white">{item.title}</div>
+                    <code className="text-[9px] text-purple-300">{item.cmd}</code>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 bg-gradient-to-r from-green-900/20 to-emerald-900/20 rounded-xl border border-green-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircleIcon className="w-4 h-4 text-green-400" />
+                <span className="text-xs font-medium text-green-300">After Deployment</span>
+              </div>
+              <p className="text-[10px] text-green-200/70">
+                Register your app at{' '}
+                <button
+                  onClick={() => openUrl('https://warpcast.com/~/developers')}
+                  className="text-green-300 underline"
+                >
+                  warpcast.com/~/developers
+                </button>
+                {' '}to get your app listed on Farcaster.
+              </p>
+            </div>
+
+            <button
+              onClick={() => openUrl('https://miniapps.farcaster.xyz')}
+              className="w-full p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 hover:border-white/20 transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-white">Read the full Mini Apps docs</div>
+                <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5 text-gray-400" />
+              </div>
+            </button>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        title="Mini App Launchpad"
+        subtitle="Build your Farcaster app"
+        Icon={CommandLineIcon}
+        iconColor="text-indigo-400"
+      />
+
+      {/* Step Progress */}
+      <div className="flex items-center justify-between px-2">
+        {steps.map((s, i) => (
+          <div key={i} className="flex flex-col items-center">
+            <div
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
+                i < step
+                  ? 'bg-purple-500 text-white'
+                  : i === step
+                  ? 'bg-purple-500/30 text-purple-300 ring-2 ring-purple-500/50'
+                  : 'bg-white/10 text-gray-500'
+              }`}
+            >
+              {i < step ? '✓' : i + 1}
+            </div>
+            <div className={`text-[8px] mt-1 ${i === step ? 'text-purple-300' : 'text-gray-500'}`}>
+              {s.title}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Step Content */}
+      <div className="min-h-[280px]">
+        {renderStepContent()}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex items-center gap-2">
+        {step > 0 && (
+          <button
+            onClick={() => setStep(step - 1)}
+            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-sm text-white transition-all"
+          >
+            Back
+          </button>
+        )}
+        {step < steps.length - 1 ? (
+          <button
+            onClick={() => setStep(step + 1)}
+            disabled={!canProceed()}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              canProceed()
+                ? 'bg-purple-500 hover:bg-purple-600 text-white'
+                : 'bg-white/10 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            onClick={() => openUrl(TEMPLATE_URL)}
+            className="flex-1 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-xl text-sm font-medium text-white transition-all"
+          >
+            🚀 Start Building
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // BUILDER ID VIEW
 // ============================================================================
 function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
@@ -2463,6 +2797,7 @@ function HomeView({ setView, onProjectClick }: { setView: (view: View) => void; 
     { view: 'shipped' as View, Icon: RocketLaunchIcon, title: 'Shipped', desc: 'New projects', gradient: 'from-orange-500/20 to-yellow-500/20', iconColor: 'text-orange-400' },
     { view: 'rugs' as View, Icon: ExclamationTriangleIcon, title: 'Alerts', desc: 'Rug detection', gradient: 'from-red-500/20 to-orange-500/20', iconColor: 'text-red-400' },
     { view: 'learn' as View, Icon: BookOpenIcon, title: 'Learn', desc: 'Dev docs', gradient: 'from-green-500/20 to-emerald-500/20', iconColor: 'text-emerald-400' },
+    { view: 'launch' as View, Icon: CommandLineIcon, title: 'Launch', desc: 'Build a mini app', gradient: 'from-indigo-500/20 to-blue-500/20', iconColor: 'text-indigo-400' },
   ];
 
   return (
@@ -2671,6 +3006,7 @@ export default function Demo() {
               {view === 'rugs' && <RugsView />}
               {view === 'submit' && <SubmitView frameData={frameData} />}
               {view === 'learn' && <LearnView />}
+              {view === 'launch' && <LaunchView />}
             </div>
 
             {/* Project Modal */}
