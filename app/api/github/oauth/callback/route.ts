@@ -18,6 +18,7 @@ interface OAuthState {
   appName: string;
   primaryColor: string;
   features: string[];
+  sessionId?: string;
 }
 
 async function exchangeCodeForToken(code: string): Promise<string | null> {
@@ -551,6 +552,11 @@ export async function GET(request: NextRequest) {
     repoName,
     `${state.appName} - A Farcaster mini app`
   );
+
+  // Always pass sessionId for server-side polling
+  if (state.sessionId) {
+    completeUrl.searchParams.set('sessionId', state.sessionId);
+  }
 
   if (result.success && result.repoUrl && result.owner) {
     // Customize the repo with user's settings

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const appName = searchParams.get('appName') || 'my-miniapp';
   const primaryColor = searchParams.get('primaryColor') || '#8B5CF6';
   const features = searchParams.get('features') || '';
+  const sessionId = searchParams.get('sessionId') || '';
 
   const clientId = process.env.GITHUB_CLIENT_ID;
 
@@ -23,11 +24,12 @@ export async function GET(request: NextRequest) {
   // Build callback URL on the same domain
   const callbackUrl = new URL('/api/github/oauth/callback', request.url);
 
-  // Encode state with app settings
+  // Encode state with app settings and session ID for server-side result polling
   const state = utf8ToBase64(JSON.stringify({
     appName,
     primaryColor,
     features: features.split(',').filter(Boolean),
+    sessionId,
   }));
 
   const params = new URLSearchParams({

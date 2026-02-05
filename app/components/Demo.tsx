@@ -1599,6 +1599,7 @@ function LaunchView() {
   const popupRef = useRef<Window | null>(null);
   const popupCheckRef = useRef<NodeJS.Timeout | null>(null);
   const oauthCompleteRef = useRef(false);
+  const sessionIdRef = useRef<string | null>(null);
 
   // Listen for OAuth completion messages from popup + localStorage fallback
   useEffect(() => {
@@ -1631,46 +1632,39 @@ function LaunchView() {
     };
   }, []);
 
-  // Poll localStorage for OAuth result (fallback for iframe context where postMessage fails)
+  // Poll server for OAuth result (works reliably in iframe context)
   useEffect(() => {
-    if (!isAuthenticating) return;
+    if (!isAuthenticating || !sessionIdRef.current) return;
 
-    const checkLocalStorage = () => {
+    const checkServer = async () => {
       try {
-        const stored = localStorage.getItem('shipyard-oauth-result');
-        if (stored) {
-          const result = JSON.parse(stored);
-          // Only process if recent (within last 30 seconds)
-          if (Date.now() - result.timestamp < 30000) {
-            oauthCompleteRef.current = true;
-            localStorage.removeItem('shipyard-oauth-result');
-            // Clear popup monitoring
-            if (popupCheckRef.current) {
-              clearInterval(popupCheckRef.current);
-              popupCheckRef.current = null;
-            }
-            setIsAuthenticating(false);
-            if (result.success && result.repo) {
-              setCreatedRepo(result.repo);
-              setGithubUser(result.user || null);
-              setOauthError(null);
-              setStep(4);
-            } else if (result.error) {
-              setOauthError(result.error);
-            }
-          } else {
-            // Clear stale result
-            localStorage.removeItem('shipyard-oauth-result');
+        const response = await fetch(`/api/github/oauth/result?sessionId=${sessionIdRef.current}`);
+        const result = await response.json();
+
+        if (!result.pending) {
+          oauthCompleteRef.current = true;
+          // Clear popup monitoring
+          if (popupCheckRef.current) {
+            clearInterval(popupCheckRef.current);
+            popupCheckRef.current = null;
+          }
+          setIsAuthenticating(false);
+          if (result.success && result.repo) {
+            setCreatedRepo(result.repo);
+            setGithubUser(result.user || null);
+            setOauthError(null);
+            setStep(4);
+          } else if (result.error) {
+            setOauthError(result.error);
           }
         }
       } catch (e) {
-        console.error('localStorage check failed:', e);
+        console.error('Server poll failed:', e);
       }
     };
 
-    // Check immediately and then poll
-    checkLocalStorage();
-    const interval = setInterval(checkLocalStorage, 500);
+    // Poll every 500ms
+    const interval = setInterval(checkServer, 500);
     return () => clearInterval(interval);
   }, [isAuthenticating]);
 
@@ -1712,10 +1706,14 @@ function LaunchView() {
     setIsAuthenticating(true);
     setOauthError(null);
 
+    // Generate unique session ID for server-side polling
+    sessionIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
     const params = new URLSearchParams({
       appName: appName || 'my-miniapp',
       primaryColor: primaryColor,
       features: features.join(','),
+      sessionId: sessionIdRef.current,
     });
 
     // Open OAuth in popup window

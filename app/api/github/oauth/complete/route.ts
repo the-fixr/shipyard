@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const repo = searchParams.get('repo');
   const user = searchParams.get('user');
   const error = searchParams.get('error');
+  const sessionId = searchParams.get('sessionId');
 
   const isSuccess = success === 'true' && repo;
 
@@ -13,6 +14,10 @@ export async function GET(request: NextRequest) {
   const safeRepo = repo?.replace(/'/g, "\\'") || '';
   const safeUser = user?.replace(/'/g, "\\'") || '';
   const safeError = error?.replace(/'/g, "\\'") || 'Unknown error';
+  const safeSessionId = sessionId?.replace(/'/g, "\\'") || '';
+
+  // Build the result API URL for server-side polling
+  const resultApiUrl = new URL('/api/github/oauth/result', request.url).toString();
 
   const html = `<!DOCTYPE html>
 <html>
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
          <div style="margin-top: 25px;">
            <button class="btn" onclick="closeAndReturn()">Back to Shipyard</button>
          </div>
-         <p class="status" id="status">Notifying Shipyard...</p>`
+         <p class="status" id="status">Syncing with Shipyard...</p>`
       : `<div class="icon">❌</div>
          <h1 class="error">Something went wrong</h1>
          <p>${safeError}</p>
@@ -84,17 +89,27 @@ export async function GET(request: NextRequest) {
     const repo = '${safeRepo}';
     const user = '${safeUser}';
     const error = '${safeError}';
+    const sessionId = '${safeSessionId}';
+    const resultApiUrl = '${resultApiUrl}';
 
-    // Store result in localStorage as backup communication
-    function storeResult() {
+    // Post result to server for iframe polling
+    async function postResultToServer() {
+      if (!sessionId) return false;
       try {
-        const result = isSuccess
-          ? { success: true, repo: repo, user: user, timestamp: Date.now() }
-          : { success: false, error: error, timestamp: Date.now() };
-        localStorage.setItem('shipyard-oauth-result', JSON.stringify(result));
-        return true;
+        const response = await fetch(resultApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            success: isSuccess,
+            repo: repo || undefined,
+            user: user || undefined,
+            error: isSuccess ? undefined : error
+          })
+        });
+        return response.ok;
       } catch (e) {
-        console.error('localStorage failed:', e);
+        console.error('Failed to post result to server:', e);
         return false;
       }
     }
@@ -104,10 +119,7 @@ export async function GET(request: NextRequest) {
         ? { type: 'oauth-complete', success: true, repo: repo, user: user }
         : { type: 'oauth-complete', success: false, error: error };
 
-      // Try localStorage first (more reliable in iframe context)
-      storeResult();
-
-      // Also try postMessage
+      // Also try postMessage (might work in some contexts)
       if (window.opener && !window.opener.closed) {
         try {
           window.opener.postMessage(message, '*');
@@ -124,10 +136,20 @@ export async function GET(request: NextRequest) {
       setTimeout(() => window.close(), 100);
     }
 
-    // Store result and try to send message immediately
-    storeResult();
+    // Post to server immediately, then update status
+    postResultToServer().then(posted => {
+      const statusEl = document.getElementById('status');
+      if (statusEl) {
+        if (posted) {
+          statusEl.textContent = 'Synced! This window will close automatically...';
+        } else {
+          statusEl.textContent = 'Ready! Click the button to close.';
+        }
+      }
+    });
+
+    // Also try postMessage
     sendMessage();
-    document.getElementById('status').textContent = 'Ready! Click the button to close...';
 
     // Auto-close after 2 seconds
     setTimeout(() => window.close(), 2000);
