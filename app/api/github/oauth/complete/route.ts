@@ -9,9 +9,10 @@ export async function GET(request: NextRequest) {
 
   const isSuccess = success === 'true' && repo;
 
-  const message = isSuccess
-    ? { type: 'oauth-complete', success: true, repo, user }
-    : { type: 'oauth-complete', success: false, error: error || 'Unknown error' };
+  // Escape for safe embedding in script
+  const safeRepo = repo?.replace(/'/g, "\\'") || '';
+  const safeUser = user?.replace(/'/g, "\\'") || '';
+  const safeError = error?.replace(/'/g, "\\'") || 'Unknown error';
 
   const html = `<!DOCTYPE html>
 <html>
@@ -33,11 +34,32 @@ export async function GET(request: NextRequest) {
     .container { max-width: 400px; padding: 40px; }
     .icon { font-size: 48px; margin-bottom: 20px; }
     h1 { font-size: 24px; margin-bottom: 10px; }
-    p { color: #888; font-size: 14px; }
+    p { color: #888; font-size: 14px; line-height: 1.6; }
     .success { color: #10b981; }
     .error { color: #ef4444; }
     a { color: #8b5cf6; text-decoration: none; }
     a:hover { text-decoration: underline; }
+    .btn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background: #8b5cf6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn:hover { background: #7c3aed; }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid #444;
+      color: #888;
+      margin-left: 10px;
+    }
+    .btn-secondary:hover { background: #222; color: white; }
+    .status { font-size: 12px; color: #666; margin-top: 15px; }
   </style>
 </head>
 <body>
@@ -45,18 +67,57 @@ export async function GET(request: NextRequest) {
     ${isSuccess
       ? `<div class="icon">✅</div>
          <h1 class="success">Repo Created!</h1>
-         <p>Your repo is ready at:<br><a href="${repo}" target="_blank">${repo}</a></p>
-         <p style="margin-top: 20px; font-size: 12px;">This window will close automatically...</p>`
+         <p>Your mini app repo is ready:</p>
+         <p><a href="${safeRepo}" target="_blank">${safeRepo}</a></p>
+         <div style="margin-top: 25px;">
+           <button class="btn" onclick="closeAndReturn()">Back to Shipyard</button>
+         </div>
+         <p class="status" id="status">Notifying Shipyard...</p>`
       : `<div class="icon">❌</div>
          <h1 class="error">Something went wrong</h1>
-         <p>${error || 'Unknown error'}</p>`
+         <p>${safeError}</p>
+         <button class="btn btn-secondary" onclick="window.close()">Close</button>`
     }
   </div>
   <script>
-    // Send message to opener (parent window)
-    if (window.opener) {
-      window.opener.postMessage(${JSON.stringify(message)}, '*');
-      setTimeout(() => window.close(), 2000);
+    const isSuccess = ${isSuccess ? 'true' : 'false'};
+    const repo = '${safeRepo}';
+    const user = '${safeUser}';
+    const error = '${safeError}';
+
+    function sendMessage() {
+      const message = isSuccess
+        ? { type: 'oauth-complete', success: true, repo: repo, user: user }
+        : { type: 'oauth-complete', success: false, error: error };
+
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage(message, '*');
+          return true;
+        } catch (e) {
+          console.error('postMessage failed:', e);
+          return false;
+        }
+      }
+      return false;
+    }
+
+    function closeAndReturn() {
+      sendMessage();
+      setTimeout(() => window.close(), 100);
+    }
+
+    // Try to send message immediately
+    if (sendMessage()) {
+      document.getElementById('status').textContent = 'Ready! Click the button or this window will close...';
+      // Auto-close after 3 seconds if message was sent
+      setTimeout(() => {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+        }
+      }, 3000);
+    } else {
+      document.getElementById('status').textContent = 'Click the button to return to Shipyard';
     }
   </script>
 </body>
