@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>GitHub Authorization Complete</title>
   <style>
     body {
@@ -62,6 +63,6 @@ export async function GET(request: NextRequest) {
 </html>`;
 
   return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html' },
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
 }
