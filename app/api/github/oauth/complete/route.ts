@@ -85,18 +85,35 @@ export async function GET(request: NextRequest) {
     const user = '${safeUser}';
     const error = '${safeError}';
 
+    // Store result in localStorage as backup communication
+    function storeResult() {
+      try {
+        const result = isSuccess
+          ? { success: true, repo: repo, user: user, timestamp: Date.now() }
+          : { success: false, error: error, timestamp: Date.now() };
+        localStorage.setItem('shipyard-oauth-result', JSON.stringify(result));
+        return true;
+      } catch (e) {
+        console.error('localStorage failed:', e);
+        return false;
+      }
+    }
+
     function sendMessage() {
       const message = isSuccess
         ? { type: 'oauth-complete', success: true, repo: repo, user: user }
         : { type: 'oauth-complete', success: false, error: error };
 
+      // Try localStorage first (more reliable in iframe context)
+      storeResult();
+
+      // Also try postMessage
       if (window.opener && !window.opener.closed) {
         try {
           window.opener.postMessage(message, '*');
           return true;
         } catch (e) {
           console.error('postMessage failed:', e);
-          return false;
         }
       }
       return false;
@@ -107,18 +124,13 @@ export async function GET(request: NextRequest) {
       setTimeout(() => window.close(), 100);
     }
 
-    // Try to send message immediately
-    if (sendMessage()) {
-      document.getElementById('status').textContent = 'Ready! Click the button or this window will close...';
-      // Auto-close after 3 seconds if message was sent
-      setTimeout(() => {
-        if (window.opener && !window.opener.closed) {
-          window.close();
-        }
-      }, 3000);
-    } else {
-      document.getElementById('status').textContent = 'Click the button to return to Shipyard';
-    }
+    // Store result and try to send message immediately
+    storeResult();
+    sendMessage();
+    document.getElementById('status').textContent = 'Ready! Click the button to close...';
+
+    // Auto-close after 2 seconds
+    setTimeout(() => window.close(), 2000);
   </script>
 </body>
 </html>`;
