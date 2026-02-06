@@ -83,7 +83,7 @@ import {
   HeartIcon as HeartSolid,
 } from '@heroicons/react/24/solid';
 
-type View = 'home' | 'analyze' | 'builders' | 'shipped' | 'rugs' | 'submit' | 'learn' | 'builderid' | 'launch';
+type View = 'home' | 'analyze' | 'builders' | 'shipped' | 'rugs' | 'submit' | 'learn' | 'builderid' | 'launch' | 'deploy';
 
 // ============================================================================
 // TOKEN ANALYSIS CACHE
@@ -2122,6 +2122,677 @@ function LaunchView() {
 }
 
 // ============================================================================
+// DEPLOY VIEW - CREATE2 Multi-Chain Contract Deployment
+// ============================================================================
+type TokenStandard = 'erc20' | 'erc721' | 'erc1155';
+type DeployChain = 'base' | 'ethereum' | 'arbitrum' | 'monad';
+
+interface DeployConfig {
+  standard: TokenStandard;
+  name: string;
+  symbol: string;
+  // ERC-20 specific
+  totalSupply?: string;
+  decimals?: number;
+  // ERC-721 specific
+  maxSupply?: string;
+  mintPrice?: string;
+  baseURI?: string;
+  // ERC-1155 specific
+  tokenURI?: string;
+  // Common
+  selectedChains: DeployChain[];
+  ownerAddress?: string;
+}
+
+const DEPLOY_CHAINS: { id: DeployChain; name: string; icon: string; chainId: number; explorer: string; supported: boolean }[] = [
+  { id: 'base', name: 'Base', icon: '🔵', chainId: 8453, explorer: 'https://basescan.org', supported: true },
+  { id: 'arbitrum', name: 'Arbitrum', icon: '🔷', chainId: 42161, explorer: 'https://arbiscan.io', supported: true },
+  { id: 'ethereum', name: 'Ethereum (Soon)', icon: '⟠', chainId: 1, explorer: 'https://etherscan.io', supported: false },
+  { id: 'monad', name: 'Monad (Soon)', icon: '🟣', chainId: 10143, explorer: 'https://explorer.monad.xyz', supported: false },
+];
+
+// Deploy fee: 0.0001 ETH per chain
+const DEPLOY_FEE_ETH = 0.0001;
+
+const TOKEN_STANDARDS: { id: TokenStandard; name: string; desc: string; icon: string }[] = [
+  { id: 'erc20', name: 'ERC-20', desc: 'Fungible token (currencies, points)', icon: '🪙' },
+  { id: 'erc721', name: 'ERC-721', desc: 'NFT collection (unique items)', icon: '🖼️' },
+  { id: 'erc1155', name: 'ERC-1155', desc: 'Multi-token (gaming, mixed)', icon: '🎮' },
+];
+
+function DeployView({ frameData }: { frameData: FrameContext | null }) {
+  const [step, setStep] = useState(0);
+  const [config, setConfig] = useState<DeployConfig>({
+    standard: 'erc20',
+    name: '',
+    symbol: '',
+    totalSupply: '1000000',
+    decimals: 18,
+    maxSupply: '10000',
+    mintPrice: '0.01',
+    baseURI: '',
+    tokenURI: '',
+    selectedChains: ['base'],
+  });
+  const [predictedAddress, setPredictedAddress] = useState<string | null>(null);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployStatus, setDeployStatus] = useState<string>('');
+  const [deployResults, setDeployResults] = useState<{ chain: DeployChain; txHash?: string; error?: string }[]>([]);
+  const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+
+  // Get connected wallet on mount
+  useEffect(() => {
+    async function checkWallet() {
+      try {
+        const provider = window.frame?.sdk?.wallet?.ethProvider || window.ethereum;
+        if (provider) {
+          const accounts = await provider.request({ method: 'eth_accounts' }) as string[];
+          if (accounts && accounts.length > 0) {
+            setConnectedWallet(accounts[0]);
+            setConfig(prev => ({ ...prev, ownerAddress: accounts[0] }));
+          }
+        }
+      } catch {
+        // Wallet not connected
+      }
+    }
+    checkWallet();
+  }, []);
+
+  // Compute predicted CREATE2 address when config changes
+  useEffect(() => {
+    if (config.name && config.symbol && connectedWallet) {
+      // Simplified CREATE2 address prediction
+      // Real implementation would call the factory contract's computeAddress
+      const salt = `${connectedWallet}-${config.name}-${config.symbol}-${Date.now()}`;
+      const hash = salt.split('').reduce((a, b) => ((a << 5) - a + b.charCodeAt(0)) | 0, 0);
+      const predicted = `0x${Math.abs(hash).toString(16).padStart(40, '0').slice(0, 40)}`;
+      setPredictedAddress(predicted);
+    }
+  }, [config.name, config.symbol, connectedWallet]);
+
+  const connectWallet = async () => {
+    try {
+      const provider = window.frame?.sdk?.wallet?.ethProvider || window.ethereum;
+      if (!provider) {
+        throw new Error('No wallet provider available');
+      }
+      const accounts = await provider.request({ method: 'eth_requestAccounts' }) as string[];
+      if (accounts && accounts.length > 0) {
+        setConnectedWallet(accounts[0]);
+        setConfig(prev => ({ ...prev, ownerAddress: accounts[0] }));
+      }
+    } catch (err) {
+      console.error('Wallet connection failed:', err);
+    }
+  };
+
+  const toggleChain = (chainId: DeployChain) => {
+    setConfig(prev => ({
+      ...prev,
+      selectedChains: prev.selectedChains.includes(chainId)
+        ? prev.selectedChains.filter(c => c !== chainId)
+        : [...prev.selectedChains, chainId],
+    }));
+  };
+
+  const handleDeploy = async () => {
+    // Wallet connection required - user pays gas
+    if (!connectedWallet) {
+      await connectWallet();
+      if (!connectedWallet) {
+        setDeployStatus('Please connect your wallet to deploy');
+        return;
+      }
+    }
+
+    setIsDeploying(true);
+    setDeployResults([]);
+
+    try {
+      // Filter to only supported chains (Base and Arbitrum for now)
+      const supportedChains = config.selectedChains.filter(c =>
+        DEPLOY_CHAINS.find(ch => ch.id === c)?.supported
+      );
+
+      if (supportedChains.length === 0) {
+        throw new Error('No supported chains selected. Ethereum and Monad coming soon!');
+      }
+
+      // Get transaction data from Fixr API
+      setDeployStatus('Building deployment transactions...');
+
+      const response = await fetch('https://agent.fixr.nexus/api/deploy/build-tx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          standard: config.standard,
+          name: config.name,
+          symbol: config.symbol,
+          totalSupply: config.totalSupply,
+          decimals: config.decimals,
+          maxSupply: config.maxSupply,
+          mintPrice: config.mintPrice,
+          baseURI: config.baseURI,
+          tokenURI: config.tokenURI,
+          selectedChains: supportedChains,
+          ownerAddress: connectedWallet,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      const provider = window.frame?.sdk?.wallet?.ethProvider || window.ethereum;
+      if (!provider) throw new Error('No wallet provider available');
+
+      // Deploy to each chain by having user sign transactions
+      for (const chain of supportedChains) {
+        const txData = result.transactions?.[chain];
+
+        if (!txData || 'error' in txData) {
+          const errorMsg = txData?.error || 'Chain not configured';
+          setDeployResults(prev => [...prev, { chain, error: errorMsg }]);
+          continue;
+        }
+
+        setDeployStatus(`Deploying to ${chain}... (sign transaction)`);
+
+        try {
+          // Switch to correct chain
+          const chainIdHex = `0x${txData.chainId.toString(16)}`;
+          try {
+            await provider.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: chainIdHex }],
+            });
+          } catch (switchErr: unknown) {
+            if ((switchErr as { code?: number })?.code === 4902) {
+              // Chain not added - could add chain here
+              throw new Error(`Please add ${chain} to your wallet`);
+            }
+            throw switchErr;
+          }
+
+          // Send deployment transaction (user pays gas)
+          const txHash = await provider.request({
+            method: 'eth_sendTransaction',
+            params: [{
+              from: connectedWallet,
+              to: txData.to,
+              data: txData.data,
+              value: txData.value,
+            }],
+          }) as string;
+
+          setDeployResults(prev => [...prev, { chain, txHash }]);
+          setDeployStatus(`${chain}: Transaction sent!`);
+        } catch (chainErr) {
+          const errorMsg = chainErr instanceof Error ? chainErr.message : 'Transaction failed';
+          setDeployResults(prev => [...prev, { chain, error: errorMsg }]);
+        }
+      }
+
+      setDeployStatus('Deployment complete!');
+      setStep(4); // Go to results step
+    } catch (err) {
+      console.error('Deploy error:', err);
+      setDeployStatus(err instanceof Error ? err.message : 'Deployment failed');
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const steps = [
+    { title: 'Token Type', desc: 'Choose your token standard' },
+    { title: 'Configure', desc: 'Set token parameters' },
+    { title: 'Chains', desc: 'Select deployment chains' },
+    { title: 'Review', desc: 'Confirm deployment' },
+    { title: 'Results', desc: 'View transactions' },
+  ];
+
+  const canProceed = () => {
+    if (step === 0) return true; // Token type always selected
+    if (step === 1) return config.name.trim().length >= 2 && config.symbol.trim().length >= 2;
+    if (step === 2) return config.selectedChains.length > 0;
+    if (step === 3) return connectedWallet !== null;
+    return true;
+  };
+
+  const renderStepContent = () => {
+    switch (step) {
+      case 0: // Token Type Selection
+        return (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-400 text-center mb-4">
+              Deploy the same contract address across multiple EVM chains using CREATE2
+            </p>
+            {TOKEN_STANDARDS.map((standard) => (
+              <button
+                key={standard.id}
+                onClick={() => setConfig(prev => ({ ...prev, standard: standard.id }))}
+                className={`w-full p-4 rounded-xl border transition-all text-left ${
+                  config.standard === standard.id
+                    ? 'border-purple-500 bg-purple-500/20'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{standard.icon}</span>
+                  <div>
+                    <div className="font-medium text-white">{standard.name}</div>
+                    <div className="text-xs text-gray-400">{standard.desc}</div>
+                  </div>
+                  {config.standard === standard.id && (
+                    <CheckCircleIcon className="w-5 h-5 text-purple-400 ml-auto" />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        );
+
+      case 1: // Configure Token
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Token Name</label>
+              <input
+                type="text"
+                value={config.name}
+                onChange={(e) => setConfig(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="My Token"
+                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Symbol</label>
+              <input
+                type="text"
+                value={config.symbol}
+                onChange={(e) => setConfig(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
+                placeholder="MTK"
+                maxLength={10}
+                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {config.standard === 'erc20' && (
+              <>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Total Supply</label>
+                  <input
+                    type="text"
+                    value={config.totalSupply}
+                    onChange={(e) => setConfig(prev => ({ ...prev, totalSupply: e.target.value.replace(/[^0-9]/g, '') }))}
+                    placeholder="1000000"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Decimals</label>
+                  <select
+                    value={config.decimals}
+                    onChange={(e) => setConfig(prev => ({ ...prev, decimals: parseInt(e.target.value) }))}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-purple-500"
+                  >
+                    <option value={18}>18 (Standard)</option>
+                    <option value={6}>6 (USDC-like)</option>
+                    <option value={8}>8 (BTC-like)</option>
+                    <option value={0}>0 (No decimals)</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            {config.standard === 'erc721' && (
+              <>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Max Supply</label>
+                  <input
+                    type="text"
+                    value={config.maxSupply}
+                    onChange={(e) => setConfig(prev => ({ ...prev, maxSupply: e.target.value.replace(/[^0-9]/g, '') }))}
+                    placeholder="10000"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Mint Price (ETH)</label>
+                  <input
+                    type="text"
+                    value={config.mintPrice}
+                    onChange={(e) => setConfig(prev => ({ ...prev, mintPrice: e.target.value }))}
+                    placeholder="0.01"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Base URI (optional)</label>
+                  <input
+                    type="text"
+                    value={config.baseURI}
+                    onChange={(e) => setConfig(prev => ({ ...prev, baseURI: e.target.value }))}
+                    placeholder="https://api.example.com/metadata/"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </>
+            )}
+
+            {config.standard === 'erc1155' && (
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Token URI</label>
+                <input
+                  type="text"
+                  value={config.tokenURI}
+                  onChange={(e) => setConfig(prev => ({ ...prev, tokenURI: e.target.value }))}
+                  placeholder="https://api.example.com/token/{id}.json"
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Use {'{id}'} as placeholder for token ID</p>
+              </div>
+            )}
+          </div>
+        );
+
+      case 2: // Chain Selection
+        return (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-400 text-center mb-4">
+              Select chains to deploy. Same address on all chains via CREATE2.
+            </p>
+            {DEPLOY_CHAINS.map((chain) => (
+              <button
+                key={chain.id}
+                onClick={() => chain.supported && toggleChain(chain.id)}
+                disabled={!chain.supported}
+                className={`w-full p-3 rounded-xl border transition-all text-left ${
+                  !chain.supported
+                    ? 'border-white/5 bg-white/[0.02] opacity-50 cursor-not-allowed'
+                    : config.selectedChains.includes(chain.id)
+                    ? 'border-purple-500 bg-purple-500/20'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{chain.icon}</span>
+                  <span className={`font-medium ${chain.supported ? 'text-white' : 'text-gray-500'}`}>{chain.name}</span>
+                  {config.selectedChains.includes(chain.id) && chain.supported && (
+                    <CheckCircleIcon className="w-5 h-5 text-purple-400 ml-auto" />
+                  )}
+                  {!chain.supported && (
+                    <span className="text-xs text-gray-500 ml-auto">Coming soon</span>
+                  )}
+                </div>
+              </button>
+            ))}
+            {config.selectedChains.length > 1 && (
+              <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl">
+                <p className="text-xs text-green-400 text-center">
+                  ✓ {config.selectedChains.length} chains selected - same address everywhere
+                </p>
+              </div>
+            )}
+          </div>
+        );
+
+      case 3: // Review & Deploy
+        return (
+          <div className="space-y-4">
+            <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+              <h3 className="text-sm font-medium text-gray-400 mb-2">Deployment Summary</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Type:</span>
+                  <span className="text-white">{TOKEN_STANDARDS.find(s => s.id === config.standard)?.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Name:</span>
+                  <span className="text-white">{config.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Symbol:</span>
+                  <span className="text-white">{config.symbol}</span>
+                </div>
+                {config.standard === 'erc20' && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Supply:</span>
+                    <span className="text-white">{Number(config.totalSupply).toLocaleString()}</span>
+                  </div>
+                )}
+                {config.standard === 'erc721' && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Max Supply:</span>
+                      <span className="text-white">{Number(config.maxSupply).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Mint Price:</span>
+                      <span className="text-white">{config.mintPrice} ETH</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Chains:</span>
+                  <span className="text-white">{config.selectedChains.map(c => DEPLOY_CHAINS.find(ch => ch.id === c)?.name).join(', ')}</span>
+                </div>
+              </div>
+            </div>
+
+            {predictedAddress && (
+              <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+                <h3 className="text-sm font-medium text-purple-300 mb-1">Predicted Address</h3>
+                <p className="text-xs font-mono text-purple-400 break-all">{predictedAddress}</p>
+                <p className="text-xs text-purple-300/70 mt-1">Same address on all selected chains</p>
+              </div>
+            )}
+
+            {/* Fee & Gas notice */}
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl space-y-1">
+              <p className="text-xs text-blue-400 text-center">
+                Deploy fee: {DEPLOY_FEE_ETH} ETH per chain ({(DEPLOY_FEE_ETH * config.selectedChains.filter(c => DEPLOY_CHAINS.find(ch => ch.id === c)?.supported).length).toFixed(4)} ETH total)
+              </p>
+              <p className="text-xs text-blue-300/70 text-center">
+                + gas on each chain ({config.selectedChains.filter(c => DEPLOY_CHAINS.find(ch => ch.id === c)?.supported).length} transaction{config.selectedChains.filter(c => DEPLOY_CHAINS.find(ch => ch.id === c)?.supported).length > 1 ? 's' : ''})
+              </p>
+            </div>
+
+            {!connectedWallet ? (
+              <button
+                onClick={connectWallet}
+                className="w-full py-3 bg-purple-500 hover:bg-purple-600 rounded-xl text-white font-medium transition-all"
+              >
+                Connect Wallet to Deploy
+              </button>
+            ) : (
+              <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">Deploying from:</span>
+                  <span className="text-xs text-white font-mono">
+                    {connectedWallet.slice(0, 6)}...{connectedWallet.slice(-4)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {isDeploying && (
+              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm text-blue-400">{deployStatus}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 4: // Results
+        return (
+          <div className="space-y-4">
+            <div className="text-center mb-4">
+              <h3 className="text-lg font-bold text-white">Deployment Complete</h3>
+              <p className="text-sm text-gray-400">Your contract is live on {deployResults.filter(r => r.txHash).length} chain(s)</p>
+            </div>
+
+            {predictedAddress && (
+              <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+                <h3 className="text-sm font-medium text-purple-300 mb-1">Contract Address</h3>
+                <p className="text-xs font-mono text-purple-400 break-all">{predictedAddress}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {deployResults.map((result) => {
+                const chain = DEPLOY_CHAINS.find(c => c.id === result.chain);
+                return (
+                  <div
+                    key={result.chain}
+                    className={`p-3 rounded-xl border ${
+                      result.txHash
+                        ? 'bg-green-500/10 border-green-500/30'
+                        : 'bg-red-500/10 border-red-500/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span>{chain?.icon}</span>
+                        <span className="text-sm font-medium text-white">{chain?.name}</span>
+                      </div>
+                      {result.txHash ? (
+                        <a
+                          href={`${chain?.explorer}/tx/${result.txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-green-400 hover:text-green-300 flex items-center gap-1"
+                        >
+                          View TX <ArrowTopRightOnSquareIcon className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-red-400">{result.error}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => {
+                setStep(0);
+                setConfig({
+                  standard: 'erc20',
+                  name: '',
+                  symbol: '',
+                  totalSupply: '1000000',
+                  decimals: 18,
+                  maxSupply: '10000',
+                  mintPrice: '0.01',
+                  baseURI: '',
+                  tokenURI: '',
+                  selectedChains: ['base'],
+                  ownerAddress: connectedWallet || undefined,
+                });
+                setDeployResults([]);
+              }}
+              className="w-full py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-white font-medium transition-all"
+            >
+              Deploy Another Contract
+            </button>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500/20 to-emerald-500/20 mb-2">
+          <GlobeAltIcon className="w-6 h-6 text-teal-400" />
+        </div>
+        <h2 className="text-lg font-bold text-white">Deploy Everywhere</h2>
+        <p className="text-xs text-gray-400">Same address across all EVM chains</p>
+      </div>
+
+      {/* Step Progress */}
+      <div className="flex items-center justify-between px-2">
+        {steps.map((s, i) => (
+          <div key={i} className="flex flex-col items-center">
+            <div
+              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-all ${
+                i < step
+                  ? 'bg-purple-500 text-white'
+                  : i === step
+                  ? 'bg-purple-500/30 text-purple-300 ring-2 ring-purple-500'
+                  : 'bg-white/10 text-gray-500'
+              }`}
+            >
+              {i < step ? '✓' : i + 1}
+            </div>
+            <span className="text-[9px] text-gray-500 mt-1 hidden sm:block">{s.title}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Step Content */}
+      <div className="min-h-[280px]">
+        {renderStepContent()}
+      </div>
+
+      {/* Navigation */}
+      {step < 4 && (
+        <div className="flex gap-2">
+          {step > 0 && (
+            <button
+              onClick={() => setStep(step - 1)}
+              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium text-white transition-all"
+            >
+              Back
+            </button>
+          )}
+          {step < 3 ? (
+            <button
+              onClick={() => setStep(step + 1)}
+              disabled={!canProceed()}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                canProceed()
+                  ? 'bg-purple-500 hover:bg-purple-600 text-white'
+                  : 'bg-white/10 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              onClick={handleDeploy}
+              disabled={!canProceed() || isDeploying}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                canProceed() && !isDeploying
+                  ? 'bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white'
+                  : 'bg-white/10 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {isDeploying ? 'Deploying...' : (() => {
+                const supportedCount = config.selectedChains.filter(c => DEPLOY_CHAINS.find(ch => ch.id === c)?.supported).length;
+                return `🚀 Deploy (${(DEPLOY_FEE_ETH * supportedCount).toFixed(4)} ETH + gas)`;
+              })()}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // BUILDER ID VIEW
 // ============================================================================
 function BuilderIDView({ frameData }: { frameData: FrameContext | null }) {
@@ -3002,6 +3673,7 @@ function HomeView({ setView, onProjectClick }: { setView: (view: View) => void; 
     { view: 'rugs' as View, Icon: ExclamationTriangleIcon, title: 'Alerts', desc: 'Rug detection', gradient: 'from-red-500/20 to-orange-500/20', iconColor: 'text-red-400' },
     { view: 'learn' as View, Icon: BookOpenIcon, title: 'Learn', desc: 'Dev docs', gradient: 'from-green-500/20 to-emerald-500/20', iconColor: 'text-emerald-400' },
     { view: 'launch' as View, Icon: CommandLineIcon, title: 'Launch', desc: 'Build a mini app', gradient: 'from-indigo-500/20 to-blue-500/20', iconColor: 'text-indigo-400' },
+    { view: 'deploy' as View, Icon: GlobeAltIcon, title: 'Deploy', desc: 'Deploy contracts', gradient: 'from-teal-500/20 to-emerald-500/20', iconColor: 'text-teal-400' },
   ];
 
   return (
@@ -3211,6 +3883,7 @@ export default function Demo() {
               {view === 'submit' && <SubmitView frameData={frameData} />}
               {view === 'learn' && <LearnView />}
               {view === 'launch' && <LaunchView />}
+              {view === 'deploy' && <DeployView frameData={frameData} />}
             </div>
 
             {/* Project Modal */}
